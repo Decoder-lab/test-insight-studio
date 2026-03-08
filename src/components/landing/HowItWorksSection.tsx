@@ -1,52 +1,49 @@
 import { motion } from "framer-motion";
+import { Link2, Video, Brain, FileBarChart } from "lucide-react";
 
 const steps = [
   {
     num: "01",
-    label: "Setup",
-    title: "Configure your test parameters and target audience",
-    items: [
-      { bold: "Pre-Survey:", text: "Define questions to understand user context before the test." },
-      { bold: "Task Design:", text: "Set up the screens and flows you want users to navigate." },
-      { bold: "Recording Config:", text: "Enable webcam, screen, or both capture modes." },
-    ],
-    duration: "/5 min/",
+    icon: Link2,
+    title: "Paste your landing page URL",
+    desc: "Simply enter the URL of the page you want to test. No setup, no SDK, no code changes needed.",
   },
   {
     num: "02",
-    label: "Record",
-    title: "Watch real users interact with your product",
-    items: [
-      { bold: "Session Capture:", text: "Record screen activity and facial expressions simultaneously." },
-      { bold: "Think Aloud:", text: "Users narrate their thought process in real-time." },
-      { bold: "Auto-Tagging:", text: "AI marks moments of confusion, delight, and frustration." },
-    ],
-    duration: "/10-15 min/",
+    icon: Video,
+    title: "Record yourself browsing (2 min max)",
+    desc: "Your webcam captures facial expressions while you navigate the page. Think aloud as you go.",
   },
   {
     num: "03",
-    label: "Analyze",
-    title: "Get actionable insights from every session",
-    items: [
-      { bold: "Timeline View:", text: "Visualize engagement and emotion across the session." },
-      { bold: "Survey Results:", text: "Compare pre and post-test sentiment shifts." },
-      { bold: "PMF Score:", text: "Get a calculated product-market fit confidence score." },
-    ],
-    duration: "/Instant/",
+    icon: Brain,
+    title: "AI analyzes your facial emotions & voice",
+    desc: "Our AI detects micro-expressions, voice tone shifts, and engagement patterns in real time.",
+  },
+  {
+    num: "04",
+    icon: FileBarChart,
+    title: "Get instant PMF report with fixes",
+    desc: "Receive your NeuroScore, emotional timeline, key moments, and prioritized recommendations.",
   },
 ];
 
 const HowItWorksSection = () => {
   return (
     <section id="how-it-works" className="bg-surface-dark text-surface-dark-foreground py-24">
-      <div className="container">
+      <div className="container max-w-5xl">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-2.5 h-2.5 rounded-full bg-accent" />
-          <span className="text-sm text-surface-dark-muted">{"{03}"} — Process</span>
+          <span className="text-sm text-surface-dark-muted">How it works</span>
         </div>
-        <h2 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold mb-16">How it works</h2>
+        <h2 className="font-display text-4xl sm:text-5xl font-bold mb-4">
+          Four steps to clarity
+        </h2>
+        <p className="text-surface-dark-muted text-lg mb-16 max-w-xl">
+          From URL to actionable insights in under 3 minutes.
+        </p>
 
-        <div className="space-y-0">
+        <div className="grid sm:grid-cols-2 gap-6">
           {steps.map((step, i) => (
             <motion.div
               key={step.num}
@@ -54,29 +51,18 @@ const HowItWorksSection = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.1 }}
-              className="border-t border-border/20 py-12 grid md:grid-cols-[120px_80px_1fr_auto] gap-6 items-start"
+              className="bg-background/5 border border-border/10 rounded-2xl p-8 group hover:border-accent/30 transition-colors"
             >
-              <span className="border border-border/30 rounded-full px-4 py-1.5 text-sm w-fit">
-                {step.label}
-              </span>
-              <span className="font-display text-2xl font-bold text-accent">/{step.num}</span>
-              <div>
-                <h3 className="font-display text-xl font-semibold mb-4">{step.title}</h3>
-                <ul className="space-y-2">
-                  {step.items.map((item, j) => (
-                    <li key={j} className="flex gap-2 text-sm text-surface-dark-muted">
-                      <span className="text-accent mt-0.5">✳</span>
-                      <span>
-                        <strong className="text-surface-dark-foreground">{item.bold}</strong> {item.text}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+                  <step.icon className="w-5 h-5 text-accent" />
+                </div>
+                <span className="font-display text-sm font-bold text-accent">/{step.num}</span>
               </div>
-              <span className="text-sm text-surface-dark-muted hidden md:block">{step.duration}</span>
+              <h3 className="font-display text-lg font-semibold mb-2">{step.title}</h3>
+              <p className="text-sm text-surface-dark-muted leading-relaxed">{step.desc}</p>
             </motion.div>
           ))}
-          <div className="border-t border-border/20" />
         </div>
       </div>
     </section>

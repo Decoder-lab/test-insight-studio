@@ -1,45 +1,59 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, Check } from "lucide-react";
+import { ArrowRight, Check, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 
 const plans = [
   {
-    name: "Starter",
-    price: "Free",
-    desc: "Perfect for initial validation",
-    features: ["3 test sessions/month", "Pre & post surveys", "Basic timeline view", "Session recordings"],
+    name: "Single Test",
+    price: "€49",
+    period: "one-time",
+    desc: "Perfect for a quick landing page checkup",
+    features: [
+      "1 landing page analysis",
+      "NeuroScore + emotional timeline",
+      "Key moments with screenshots",
+      "Actionable fix recommendations",
+      "PDF report download",
+    ],
     highlighted: false,
+    cta: "Test My Landing Page",
   },
   {
     name: "Pro",
-    price: "$49",
-    period: "/mo",
-    desc: "For teams serious about PMF",
-    features: ["Unlimited sessions", "AI emotion tagging", "PMF score calculator", "Team collaboration", "Export & share results"],
+    price: "€199",
+    period: "/month",
+    desc: "For teams iterating fast on conversion",
+    features: [
+      "Unlimited landing page tests",
+      "Everything in Single Test",
+      "A/B comparison reports",
+      "Team collaboration (5 seats)",
+      "Priority AI analysis",
+      "Slack & Notion integrations",
+    ],
     highlighted: true,
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    desc: "For scale and compliance",
-    features: ["Everything in Pro", "SSO & audit logs", "Dedicated support", "Custom integrations", "On-premise option"],
-    highlighted: false,
+    cta: "Start Pro Plan",
   },
 ];
 
 const PricingSection = () => {
   return (
-    <section id="pricing" className="py-24 bg-background">
-      <div className="container">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-2.5 h-2.5 rounded-full bg-accent" />
-          <span className="text-sm text-muted-foreground">{"{04}"} — Pricing</span>
+    <section id="pricing" className="py-24 bg-surface-dark text-surface-dark-foreground">
+      <div className="container max-w-4xl">
+        <div className="text-center mb-16">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <div className="w-2.5 h-2.5 rounded-full bg-accent" />
+            <span className="text-sm text-surface-dark-muted">Pricing</span>
+          </div>
+          <h2 className="font-display text-4xl sm:text-5xl font-bold mb-4">
+            Simple, transparent pricing
+          </h2>
+          <p className="text-surface-dark-muted text-lg">
+            No subscriptions required. Pay per test, or go unlimited.
+          </p>
         </div>
-        <h2 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold mb-16">
-          Simple pricing
-        </h2>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-2 gap-6">
           {plans.map((plan, i) => (
             <motion.div
               key={plan.name}
@@ -47,25 +61,33 @@ const PricingSection = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.1 }}
-              className={`rounded-2xl p-8 flex flex-col ${
+              className={`rounded-2xl p-8 flex flex-col relative ${
                 plan.highlighted
-                  ? "bg-surface-dark text-surface-dark-foreground"
-                  : "bg-card border border-border"
+                  ? "bg-accent text-accent-foreground ring-2 ring-accent"
+                  : "bg-background/5 border border-border/10"
               }`}
             >
-              <span className="text-sm font-medium mb-4">{plan.name}</span>
-              <div className="flex items-baseline gap-1 mb-2">
+              {plan.highlighted && (
+                <div className="absolute -top-3 left-8 bg-surface-dark text-accent text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
+                  <Zap className="w-3 h-3" /> Most Popular
+                </div>
+              )}
+
+              <span className="text-sm font-medium mb-4 opacity-80">{plan.name}</span>
+              <div className="flex items-baseline gap-1 mb-1">
                 <span className="font-display text-4xl font-bold">{plan.price}</span>
-                {plan.period && <span className="text-sm text-muted-foreground">{plan.period}</span>}
+                <span className={`text-sm ${plan.highlighted ? "opacity-60" : "text-surface-dark-muted"}`}>
+                  {plan.period}
+                </span>
               </div>
-              <p className={`text-sm mb-8 ${plan.highlighted ? "text-surface-dark-muted" : "text-muted-foreground"}`}>
+              <p className={`text-sm mb-8 ${plan.highlighted ? "opacity-70" : "text-surface-dark-muted"}`}>
                 {plan.desc}
               </p>
 
               <ul className="space-y-3 mb-8 flex-1">
                 {plan.features.map((f) => (
                   <li key={f} className="flex items-center gap-2 text-sm">
-                    <Check className={`w-4 h-4 ${plan.highlighted ? "text-accent" : "text-foreground"}`} />
+                    <Check className={`w-4 h-4 shrink-0 ${plan.highlighted ? "opacity-80" : "text-accent"}`} />
                     {f}
                   </li>
                 ))}
@@ -73,17 +95,21 @@ const PricingSection = () => {
 
               <Link
                 to="/test"
-                className={`inline-flex items-center justify-center gap-2 rounded-full py-3 px-6 text-sm font-medium transition-all ${
+                className={`inline-flex items-center justify-center gap-2 rounded-full py-3.5 px-6 text-sm font-semibold transition-all ${
                   plan.highlighted
-                    ? "bg-accent text-accent-foreground hover:brightness-95"
-                    : "bg-primary text-primary-foreground hover:opacity-90"
+                    ? "bg-surface-dark text-surface-dark-foreground hover:opacity-90"
+                    : "bg-accent text-accent-foreground hover:brightness-95"
                 }`}
               >
-                Get started <ArrowUpRight className="w-4 h-4" />
+                {plan.cta} <ArrowRight className="w-4 h-4" />
               </Link>
             </motion.div>
           ))}
         </div>
+
+        <p className="text-center text-sm text-surface-dark-muted mt-8">
+          30-day money-back guarantee · No credit card required for single test
+        </p>
       </div>
     </section>
   );
