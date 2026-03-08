@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 const Navbar = () => {
   return (
@@ -17,19 +17,22 @@ const Navbar = () => {
           <a href="#how-it-works" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
             How it works
           </a>
+          <a href="#sample-results" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            Results
+          </a>
           <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
             Pricing
           </a>
+          <a href="#faq" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            FAQ
+          </a>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="hidden sm:inline text-sm text-muted-foreground">hello@decoder.dev</span>
-          <Link to="/test">
-            <Button className="bg-primary text-primary-foreground rounded-full px-5 gap-2">
-              Start Testing <ArrowUpRight className="w-4 h-4" />
-            </Button>
-          </Link>
-        </div>
+        <Link to="/test">
+          <Button className="bg-accent text-accent-foreground rounded-full px-5 gap-2 hover:brightness-95">
+            Get Started <ArrowRight className="w-4 h-4" />
+          </Button>
+        </Link>
       </div>
     </nav>
   );
