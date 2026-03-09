@@ -38,7 +38,11 @@ const TestPage = () => {
             <PreSurvey onComplete={() => setStep("recording")} />
           )}
           {step === "recording" && (
-            <RecordingSession onComplete={() => setStep("post-survey")} />
+            <RecordingSession
+              targetURL="https://example.com"
+              onComplete={() => setStep("post-survey")}
+              maxDuration={120}
+            />
           )}
           {step === "post-survey" && (
             <PostSurvey onComplete={() => navigate("/results/demo-session")} />
