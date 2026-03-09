@@ -1,80 +1,114 @@
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ArrowUpRight } from "lucide-react";
 
-interface PostSurveyData {
-  satisfaction: string;
-  wouldRecommend: string;
-  feedback: string;
-  disappointed: string;
-}
+const postSurveySchema = z.object({
+  disappointed: z.string().min(1, "Please select an option"),
+  wouldBuy: z.string().min(1, "Please select an option"),
+  mostConfusing: z.string().trim().min(1, "Required").max(1000),
+  likedMost: z.string().trim().min(1, "Required").max(1000),
+  whatsMissing: z.string().trim().min(1, "Required").max(1000),
+});
+
+export type PostSurveyAnswers = z.infer<typeof postSurveySchema>;
 
 interface PostSurveyProps {
-  onComplete: (data: PostSurveyData) => void;
+  onComplete: (data: PostSurveyAnswers) => void;
 }
 
 const PostSurvey = ({ onComplete }: PostSurveyProps) => {
-  const { register, handleSubmit, setValue } = useForm<PostSurveyData>();
+  const form = useForm<PostSurveyAnswers>({
+    resolver: zodResolver(postSurveySchema),
+    defaultValues: { disappointed: "", wouldBuy: "", mostConfusing: "", likedMost: "", whatsMissing: "" },
+  });
+
+  const fields = ["disappointed", "wouldBuy", "mostConfusing", "likedMost", "whatsMissing"] as const;
+  const filled = fields.filter((f) => !!form.watch(f)).length;
+  const progress = (filled / fields.length) * 100;
 
   return (
-    <form onSubmit={handleSubmit(onComplete)} className="space-y-8 max-w-lg mx-auto">
-      <div>
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-2.5 h-2.5 rounded-full bg-accent" />
-          <span className="text-sm text-muted-foreground">Post-Test Survey</span>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onComplete)} className="space-y-8 max-w-lg mx-auto">
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-2.5 h-2.5 rounded-full bg-accent" />
+            <span className="text-sm text-muted-foreground">Post-Test Survey</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-border mb-6">
+            <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <h2 className="font-display text-3xl font-bold mb-2">How was that?</h2>
+          <p className="text-muted-foreground text-sm">Your feedback helps us measure product-market fit.</p>
         </div>
-        <h2 className="font-display text-3xl font-bold mb-2">How was that?</h2>
-        <p className="text-muted-foreground text-sm">Your feedback helps us measure product-market fit.</p>
-      </div>
 
-      <div className="space-y-3">
-        <Label>Overall satisfaction</Label>
-        <RadioGroup onValueChange={(v) => setValue("satisfaction", v)}>
-          {["Very dissatisfied", "Dissatisfied", "Neutral", "Satisfied", "Very satisfied"].map((opt) => (
-            <div key={opt} className="flex items-center space-x-2">
-              <RadioGroupItem value={opt} id={`sat-${opt}`} />
-              <Label htmlFor={`sat-${opt}`} className="font-normal">{opt}</Label>
-            </div>
-          ))}
-        </RadioGroup>
-      </div>
+        <FormField control={form.control} name="disappointed" render={({ field }) => (
+          <FormItem>
+            <FormLabel>How would you feel if you could no longer use this product?</FormLabel>
+            <Select onValueChange={field.onChange} value={field.value}>
+              <FormControl>
+                <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value="Very disappointed">Very disappointed</SelectItem>
+                <SelectItem value="Somewhat disappointed">Somewhat disappointed</SelectItem>
+                <SelectItem value="Not disappointed">Not disappointed</SelectItem>
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <div className="space-y-3">
-        <Label>How would you feel if you could no longer use this product?</Label>
-        <RadioGroup onValueChange={(v) => setValue("disappointed", v)}>
-          {["Not disappointed", "Somewhat disappointed", "Very disappointed"].map((opt) => (
-            <div key={opt} className="flex items-center space-x-2">
-              <RadioGroupItem value={opt} id={`dis-${opt}`} />
-              <Label htmlFor={`dis-${opt}`} className="font-normal">{opt}</Label>
-            </div>
-          ))}
-        </RadioGroup>
-      </div>
+        <FormField control={form.control} name="wouldBuy" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Would you buy this product?</FormLabel>
+            <Select onValueChange={field.onChange} value={field.value}>
+              <FormControl>
+                <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value="Yes">Yes</SelectItem>
+                <SelectItem value="Maybe">Maybe</SelectItem>
+                <SelectItem value="No">No</SelectItem>
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <div className="space-y-3">
-        <Label>Would you recommend this to a friend?</Label>
-        <RadioGroup onValueChange={(v) => setValue("wouldRecommend", v)}>
-          {["Definitely not", "Probably not", "Maybe", "Probably yes", "Definitely yes"].map((opt) => (
-            <div key={opt} className="flex items-center space-x-2">
-              <RadioGroupItem value={opt} id={`rec-${opt}`} />
-              <Label htmlFor={`rec-${opt}`} className="font-normal">{opt}</Label>
-            </div>
-          ))}
-        </RadioGroup>
-      </div>
+        <FormField control={form.control} name="mostConfusing" render={({ field }) => (
+          <FormItem>
+            <FormLabel>What was most confusing?</FormLabel>
+            <FormControl><Textarea placeholder="The part that confused me was…" {...field} /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <div className="space-y-2">
-        <Label htmlFor="feedback">Any additional thoughts?</Label>
-        <Textarea id="feedback" placeholder="The thing I liked most was..." {...register("feedback")} />
-      </div>
+        <FormField control={form.control} name="likedMost" render={({ field }) => (
+          <FormItem>
+            <FormLabel>What did you like most?</FormLabel>
+            <FormControl><Textarea placeholder="The thing I liked most was…" {...field} /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <Button type="submit" className="bg-accent text-accent-foreground rounded-full px-6 gap-2 hover:brightness-95">
-        View Results <ArrowUpRight className="w-4 h-4" />
-      </Button>
-    </form>
+        <FormField control={form.control} name="whatsMissing" render={({ field }) => (
+          <FormItem>
+            <FormLabel>What's missing?</FormLabel>
+            <FormControl><Textarea placeholder="I wish it had…" {...field} /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
+
+        <Button type="submit" className="bg-accent text-accent-foreground rounded-full px-6 gap-2 hover:brightness-95">
+          View Results <ArrowUpRight className="w-4 h-4" />
+        </Button>
+      </form>
+    </Form>
   );
 };
 

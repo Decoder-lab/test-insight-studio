@@ -1,67 +1,107 @@
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ArrowUpRight } from "lucide-react";
 
-interface PreSurveyData {
-  name: string;
-  role: string;
-  familiarity: string;
-  expectations: string;
-}
+const preSurveySchema = z.object({
+  problemToSolve: z.string().trim().min(1, "Required").max(1000),
+  buyMotivation: z.string().trim().min(1, "Required").max(1000),
+  budgetRange: z.string().min(1, "Please select a budget range"),
+  urgency: z.number().min(1).max(5),
+});
+
+export type PreSurveyAnswers = z.infer<typeof preSurveySchema>;
 
 interface PreSurveyProps {
-  onComplete: (data: PreSurveyData) => void;
+  onComplete: (data: PreSurveyAnswers) => void;
 }
 
 const PreSurvey = ({ onComplete }: PreSurveyProps) => {
-  const { register, handleSubmit, setValue, watch } = useForm<PreSurveyData>();
+  const form = useForm<PreSurveyAnswers>({
+    resolver: zodResolver(preSurveySchema),
+    defaultValues: { problemToSolve: "", buyMotivation: "", budgetRange: "", urgency: 3 },
+  });
+
+  const fields = ["problemToSolve", "buyMotivation", "budgetRange", "urgency"] as const;
+  const filled = fields.filter((f) => {
+    const v = form.watch(f);
+    return f === "urgency" ? true : !!v;
+  }).length;
+  const progress = (filled / fields.length) * 100;
 
   return (
-    <form onSubmit={handleSubmit(onComplete)} className="space-y-8 max-w-lg mx-auto">
-      <div>
-        <div className="flex items-center gap-2 mb-6">
-          <div className="w-2.5 h-2.5 rounded-full bg-accent" />
-          <span className="text-sm text-muted-foreground">Pre-Test Survey</span>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onComplete)} className="space-y-8 max-w-lg mx-auto">
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-2.5 h-2.5 rounded-full bg-accent" />
+            <span className="text-sm text-muted-foreground">Pre-Test Survey</span>
+          </div>
+          <div className="h-1.5 w-full rounded-full bg-border mb-6">
+            <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <h2 className="font-display text-3xl font-bold mb-2">Before we begin</h2>
+          <p className="text-muted-foreground text-sm">Help us understand your context.</p>
         </div>
-        <h2 className="font-display text-3xl font-bold mb-2">Before we begin</h2>
-        <p className="text-muted-foreground text-sm">Help us understand your context.</p>
-      </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="name">Your name</Label>
-        <Input id="name" placeholder="Jane Doe" {...register("name", { required: true })} />
-      </div>
+        <FormField control={form.control} name="problemToSolve" render={({ field }) => (
+          <FormItem>
+            <FormLabel>What problem are you trying to solve?</FormLabel>
+            <FormControl><Textarea placeholder="Describe the core problem…" {...field} /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <div className="space-y-2">
-        <Label htmlFor="role">Your role</Label>
-        <Input id="role" placeholder="Product Manager" {...register("role", { required: true })} />
-      </div>
+        <FormField control={form.control} name="buyMotivation" render={({ field }) => (
+          <FormItem>
+            <FormLabel>What would make you buy this product?</FormLabel>
+            <FormControl><Textarea placeholder="What features or outcomes would convince you?" {...field} /></FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <div className="space-y-3">
-        <Label>How familiar are you with this product?</Label>
-        <RadioGroup onValueChange={(v) => setValue("familiarity", v)} defaultValue="">
-          {["Not at all", "Somewhat", "Very familiar"].map((opt) => (
-            <div key={opt} className="flex items-center space-x-2">
-              <RadioGroupItem value={opt} id={opt} />
-              <Label htmlFor={opt} className="font-normal">{opt}</Label>
+        <FormField control={form.control} name="budgetRange" render={({ field }) => (
+          <FormItem>
+            <FormLabel>What's your budget range?</FormLabel>
+            <Select onValueChange={field.onChange} value={field.value}>
+              <FormControl>
+                <SelectTrigger><SelectValue placeholder="Select budget range" /></SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value="<€1K">&lt;€1K</SelectItem>
+                <SelectItem value="€1-5K">€1-5K</SelectItem>
+                <SelectItem value="€5-10K">€5-10K</SelectItem>
+                <SelectItem value=">€10K">&gt;€10K</SelectItem>
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )} />
+
+        <FormField control={form.control} name="urgency" render={({ field }) => (
+          <FormItem>
+            <FormLabel>How urgent is solving this? ({field.value}/5)</FormLabel>
+            <FormControl>
+              <Slider min={1} max={5} step={1} value={[field.value]} onValueChange={(v) => field.onChange(v[0])} />
+            </FormControl>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Not urgent</span><span>Very urgent</span>
             </div>
-          ))}
-        </RadioGroup>
-      </div>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <div className="space-y-2">
-        <Label htmlFor="expectations">What do you expect from this product?</Label>
-        <Textarea id="expectations" placeholder="I'm hoping it will..." {...register("expectations")} />
-      </div>
-
-      <Button type="submit" className="bg-accent text-accent-foreground rounded-full px-6 gap-2 hover:brightness-95">
-        Continue to recording <ArrowUpRight className="w-4 h-4" />
-      </Button>
-    </form>
+        <Button type="submit" className="bg-accent text-accent-foreground rounded-full px-6 gap-2 hover:brightness-95">
+          Continue to recording <ArrowUpRight className="w-4 h-4" />
+        </Button>
+      </form>
+    </Form>
   );
 };
 
