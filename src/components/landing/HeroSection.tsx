@@ -27,7 +27,7 @@ const HeroSection = () => {
           <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.05] tracking-tight mb-6">
             Test Your Landing Page
             <br />
-            <span className="bg-accent text-primary">PMF in 3 Minutes</span>
+            <span className="bg-accent text-primary">Product Market Fit in 48 hrs</span>
           </h1>
 
           <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed mb-10">
@@ -39,8 +39,8 @@ const HeroSection = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
             <Link
               to="/test"
-              className="inline-flex items-center gap-3 bg-accent text-accent-foreground rounded-full px-8 py-4 font-semibold text-base hover:brightness-95 transition-all shadow-lg shadow-accent/20">
-              Test My Landing Page — €49
+              className="inline-flex items-center gap-3 bg-accent text-accent-foreground rounded-full px-8 py-4 font-semibold text-base hover:brightness-95 transition-all shadow-lg shadow-accent/20">Test My Landing Page — demo
+
               <ArrowRight className="w-5 h-5" />
             </Link>
             <CalendlyButton className="px-6 py-4 text-base border-border" variant="outline">

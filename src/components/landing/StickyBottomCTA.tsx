@@ -13,9 +13,9 @@ const StickyBottomCTA = () => {
         <div className="flex items-center gap-3 ml-auto">
           <Link
             to="/test"
-            className="inline-flex items-center gap-2 bg-accent text-accent-foreground rounded-full px-5 py-2.5 text-sm font-semibold hover:brightness-95 transition-all"
-          >
-            Start Test — €49 <ArrowRight className="w-4 h-4" />
+            className="inline-flex items-center gap-2 bg-accent text-accent-foreground rounded-full px-5 py-2.5 text-sm font-semibold hover:brightness-95 transition-all">Start Test  PMF Demo
+
+            <ArrowRight className="w-4 h-4" />
           </Link>
           <div className="hidden md:block">
             <CalendlyButton variant="outline" className="px-4 py-2.5 text-sm">
@@ -24,8 +24,8 @@ const StickyBottomCTA = () => {
           </div>
         </div>
       </div>
-    </div>
-  );
+    </div>);
+
 };
 
 export default StickyBottomCTA;
