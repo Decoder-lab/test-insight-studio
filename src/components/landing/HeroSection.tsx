@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Play } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import CalendlyButton from "@/components/CalendlyButton";
 
 const HeroSection = () => {
   return (
