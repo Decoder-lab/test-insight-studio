@@ -65,6 +65,22 @@ const HowItWorksSection = () => {
               </div>
               <h3 className="font-display text-lg font-semibold mb-2">{step.title}</h3>
               <p className="text-sm text-surface-dark-muted leading-relaxed">{step.desc}</p>
+
+              {/* Sub-options for step 01 */}
+              {step.options && (
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  {step.options.map((opt) => (
+                    <div
+                      key={opt.label}
+                      className="flex flex-col items-center gap-1.5 rounded-xl border border-border/20 bg-background/5 p-3 text-center hover:border-accent/40 transition-colors cursor-pointer"
+                    >
+                      <opt.icon className="w-4 h-4 text-accent" />
+                      <span className="text-xs font-semibold text-surface-dark-foreground">{opt.label}</span>
+                      <span className="text-[11px] text-surface-dark-muted leading-tight">{opt.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </motion.div>
           ))}
         </div>
