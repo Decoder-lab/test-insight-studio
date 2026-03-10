@@ -1,12 +1,16 @@
 import { motion } from "framer-motion";
-import { Link2, Video, Brain, FileBarChart } from "lucide-react";
+import { Link2, Video, Brain, FileBarChart, Monitor, FileUp } from "lucide-react";
 
 const steps = [
   {
     num: "01",
     icon: Link2,
-    title: "Paste your landing page URL",
-    desc: "Simply enter the URL of the page you want to test. No setup, no SDK, no code changes needed.",
+    title: "Paste your landing page URL — or upload a screenshot",
+    desc: "Enter the URL of the page you want to test, or upload a PDF screenshot to explore during the session. No setup, no SDK, no code changes needed.",
+    options: [
+      { icon: Monitor, label: "Live URL", desc: "We'll load your page in-browser for a real-time session" },
+      { icon: FileUp, label: "Upload PDF", desc: "Upload a screenshot or mockup to walk through instead" },
+    ],
   },
   {
     num: "02",
