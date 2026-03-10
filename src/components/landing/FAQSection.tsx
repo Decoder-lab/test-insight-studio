@@ -8,16 +8,32 @@ import { motion } from "framer-motion";
 
 const faqs = [
   {
+    q: "How is this different from regular user testing?",
+    a: "Traditional testing captures what users SAY (surveys, interviews). NeuroScore measures what they FEEL (facial emotions, voice stress, attention patterns). Studies show 40% of users who say \"I'd buy this\" never convert — their emotions reveal the truth.",
+  },
+  {
+    q: "What makes NeuroScore scientifically valid?",
+    a: "Our methodology combines validated neuroscience techniques: Facial Action Coding System (FACS), Voice Stress Analysis, and gaze proxy via facial orientation. Developed by Dr. Ivan Brak (PhD, 18+ years research, 40+ publications).",
+  },
+  {
+    q: "Can I just use regular A/B testing instead?",
+    a: "A/B testing tells you WHAT performs better, but not WHY. NeuroScore shows you exactly where users get confused, lose trust, or check out emotionally — so you know what to fix BEFORE spending money on traffic.",
+  },
+  {
+    q: "What if my NeuroScore is low?",
+    a: "That's the point! 67% of founders launch with critical UX issues they never detected. You'll get specific, prioritized fixes with exact timestamps, screenshots, and emotional data. Better to know NOW than after burning €10K on ads.",
+  },
+  {
+    q: "How long until I get results?",
+    a: "48 hours maximum. Most tests analyzed within 24 hours. You'll receive: NeuroScore breakdown (6 stages), emotional timeline graph, key moments with screenshots, prioritized fix list, and investor-ready PMF summary.",
+  },
+  {
     q: "How accurate is emotion detection?",
-    a: "Our AI uses state-of-the-art facial action unit analysis with 87%+ accuracy on core emotions (engagement, confusion, delight, frustration). It's validated against academic benchmarks and improves continuously with more data.",
+    a: "Our AI uses state-of-the-art facial action unit analysis with 87%+ accuracy on core emotions (engagement, confusion, delight, frustration). It's validated against academic benchmarks and improves continuously.",
   },
   {
     q: "What do I need to record?",
     a: "Just a webcam and a quiet environment. The recording captures your face and voice as you browse the landing page. No special equipment needed — a laptop's built-in camera works perfectly.",
-  },
-  {
-    q: "How long does analysis take?",
-    a: "Results are typically ready within 60 seconds after your recording ends. The AI processes your facial expressions, voice patterns, and browsing behavior in parallel for near-instant insights.",
   },
   {
     q: "Is my data private?",

@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, Play } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import CalendlyButton from "@/components/CalendlyButton";
 
 const HeroSection = () => {
   return (
@@ -35,21 +36,21 @@ const HeroSection = () => {
             Know exactly what users feel when they see your page.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
             <Link
               to="/test"
               className="inline-flex items-center gap-3 bg-accent text-accent-foreground rounded-full px-8 py-4 font-semibold text-base hover:brightness-95 transition-all shadow-lg shadow-accent/20">
-              
               Test My Landing Page — €49
               <ArrowRight className="w-5 h-5" />
             </Link>
-            <a
-              href="#sample-results"
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              
-              <Play className="w-4 h-4" />
-              See sample results
-            </a>
+            <CalendlyButton className="px-6 py-4 text-base border-border" variant="outline">
+              Book Free 15-Min Consultation
+            </CalendlyButton>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground mb-16">
+            <span>✓ No credit card required</span>
+            <span>✓ Results in 48 hours</span>
+            <span>✓ Money-back guarantee</span>
           </div>
         </motion.div>
 

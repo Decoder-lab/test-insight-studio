@@ -40,6 +40,11 @@
     --surface-dark-foreground: 0 0% 95%;
     --surface-dark-muted: 0 0% 40%;
 
+    --score-critical: 0 84% 60%;
+    --score-risky: 25 95% 53%;
+    --score-good: 48 96% 53%;
+    --score-strong: 142 71% 45%;
+
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;

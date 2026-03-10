@@ -56,6 +56,12 @@ export default {
           foreground: "hsl(var(--surface-dark-foreground))",
           muted: "hsl(var(--surface-dark-muted))",
         },
+        score: {
+          critical: "hsl(var(--score-critical))",
+          risky: "hsl(var(--score-risky))",
+          good: "hsl(var(--score-good))",
+          strong: "hsl(var(--score-strong))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
