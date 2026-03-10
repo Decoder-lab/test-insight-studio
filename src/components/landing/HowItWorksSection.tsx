@@ -1,12 +1,16 @@
 import { motion } from "framer-motion";
-import { Link2, Video, Brain, FileBarChart } from "lucide-react";
+import { Link2, Video, Brain, FileBarChart, Monitor, FileUp } from "lucide-react";
 
 const steps = [
   {
     num: "01",
     icon: Link2,
-    title: "Paste your landing page URL",
-    desc: "Simply enter the URL of the page you want to test. No setup, no SDK, no code changes needed.",
+    title: "Paste your landing page URL — or upload a screenshot",
+    desc: "Enter the URL of the page you want to test, or upload a PDF screenshot to explore during the session. No setup, no SDK, no code changes needed.",
+    options: [
+      { icon: Monitor, label: "Live URL", desc: "We'll load your page in-browser for a real-time session" },
+      { icon: FileUp, label: "Upload PDF", desc: "Upload a screenshot or mockup to walk through instead" },
+    ],
   },
   {
     num: "02",
@@ -61,6 +65,22 @@ const HowItWorksSection = () => {
               </div>
               <h3 className="font-display text-lg font-semibold mb-2">{step.title}</h3>
               <p className="text-sm text-surface-dark-muted leading-relaxed">{step.desc}</p>
+
+              {/* Sub-options for step 01 */}
+              {step.options && (
+                <div className="grid grid-cols-2 gap-3 mt-4">
+                  {step.options.map((opt) => (
+                    <div
+                      key={opt.label}
+                      className="flex flex-col items-center gap-1.5 rounded-xl border border-border/20 bg-background/5 p-3 text-center hover:border-accent/40 transition-colors cursor-pointer"
+                    >
+                      <opt.icon className="w-4 h-4 text-accent" />
+                      <span className="text-xs font-semibold text-surface-dark-foreground">{opt.label}</span>
+                      <span className="text-[11px] text-surface-dark-muted leading-tight">{opt.desc}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </motion.div>
           ))}
         </div>
