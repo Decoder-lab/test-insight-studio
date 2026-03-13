@@ -95,6 +95,7 @@ const PricingSection = () => {
 
               <Link
                 to="/test"
+                aria-label="Start PMF test"
                 className={`inline-flex items-center justify-center gap-2 rounded-full py-3.5 px-6 text-sm font-semibold transition-all ${
                   plan.highlighted
                     ? "bg-surface-dark text-surface-dark-foreground hover:opacity-90"

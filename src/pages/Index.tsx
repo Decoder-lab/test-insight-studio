@@ -14,7 +14,15 @@ import StickyBottomCTA from "@/components/landing/StickyBottomCTA";
 const Index = () => {
   return (
     <div className="min-h-screen pb-16">
+      {/* Skip to main content link for keyboard/screen reader users */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-accent focus:text-accent-foreground focus:px-4 focus:py-2 focus:rounded-md focus:font-semibold"
+      >
+        Skip to main content
+      </a>
       <Navbar />
+      <main id="main-content">
       <HeroSection />
       <WhatWeTestSection />
       <HowItWorksSection />
@@ -24,6 +32,7 @@ const Index = () => {
       <PricingSection />
       <ConsultationSection />
       <FAQSection />
+      </main>
       <Footer />
       <StickyBottomCTA />
     </div>

@@ -23,7 +23,7 @@ const CalendlyButton = ({ className, variant = "outline", children }: CalendlyBu
     if (window.Calendly) {
       window.Calendly.initPopupWidget({ url: CALENDLY_URL });
     } else {
-      window.open(CALENDLY_URL, "_blank", "noopener");
+      window.open(CALENDLY_URL, "_blank", "noopener,noreferrer");
     }
 
     // Analytics tracking

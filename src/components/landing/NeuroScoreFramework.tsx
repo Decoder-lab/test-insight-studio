@@ -276,6 +276,7 @@ const NeuroScoreFramework = () => {
         >
           <Link
             to="/test"
+            aria-label="Start PMF test"
             className="inline-flex items-center gap-3 bg-accent text-accent-foreground rounded-full px-8 py-4 font-semibold text-base hover:brightness-95 transition-all shadow-lg shadow-accent/20"
           >
             Get Your NeuroScore <ArrowRight className="w-5 h-5" />

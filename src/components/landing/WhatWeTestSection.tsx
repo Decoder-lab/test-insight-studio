@@ -82,8 +82,7 @@ const WhatWeTestSection = () => {
             <div className="p-4 text-muted-foreground" />
             <div className="p-4 text-muted-foreground">Traditional Testing</div>
             <div className="p-4 text-muted-foreground">Self-Reported</div>
-            <div className="p-4 text-accent-foreground bg-accent font-bold">
-</div>
+            <div className="p-4 text-accent-foreground bg-accent font-bold">NeuroInsight</div>
           </div>
           {comparisonData.map((row, i) => <div key={i} className="grid grid-cols-4 border-t border-border text-sm">
               <div className="p-4 font-medium text-foreground">{row.category}</div>
@@ -141,6 +140,7 @@ const WhatWeTestSection = () => {
           </p>
           <Link
             to="/test"
+            aria-label="Start PMF test"
             className="inline-flex items-center gap-3 bg-accent text-accent-foreground rounded-full px-8 py-4 font-semibold text-base hover:brightness-95 transition-all shadow-lg shadow-accent/20">
             
             Test What Really Matters <ArrowRight className="w-5 h-5" />
