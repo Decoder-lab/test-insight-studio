@@ -28,10 +28,12 @@ const Navbar = () => {
           </a>
         </div>
 
-        <Link to="/test">
-          <Button className="bg-accent text-accent-foreground rounded-full px-5 gap-2 hover:brightness-95">
-            Get Started <ArrowRight className="w-4 h-4" />
-          </Button>
+        <Link
+          to="/test"
+          aria-label="Start PMF test"
+          className="inline-flex items-center gap-2 bg-accent text-accent-foreground rounded-full px-5 py-2 font-semibold text-sm hover:brightness-95 transition-all"
+        >
+          Get Started <ArrowRight className="w-4 h-4" />
         </Link>
       </div>
     </nav>

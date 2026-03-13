@@ -32,6 +32,7 @@ const Index = () => {
       <PricingSection />
       <ConsultationSection />
       <FAQSection />
+      </main>
       <Footer />
       <StickyBottomCTA />
     </div>
