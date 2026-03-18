@@ -30,7 +30,7 @@ const ConsultationSection = () => {
         >
           <div
             className="calendly-inline-widget rounded-2xl overflow-hidden border border-border"
-            data-url="https://calendly.com/neuroinsight-labs/pmf-consultation?hide_event_type_details=1&hide_gdpr_banner=1"
+            data-url="https://calendly.com/decoder-agency/30min?hide_event_type_details=1&hide_gdpr_banner=1"
             style={{ minWidth: 320, height: 700 }}
           />
         </motion.div>

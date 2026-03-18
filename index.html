@@ -30,6 +30,16 @@
 
   <body>
     <div id="root"></div>
+    <script>
+      // GitHub Pages SPA: restore path after 404 redirect
+      (function() {
+        var redirect = sessionStorage.getItem('spa_redirect');
+        if (redirect) {
+          sessionStorage.removeItem('spa_redirect');
+          window.history.replaceState(null, '', redirect);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
     <script src="https://assets.calendly.com/assets/external/widget.js" async></script>
   </body>

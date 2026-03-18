@@ -10,7 +10,7 @@ declare global {
   }
 }
 
-const CALENDLY_URL = "https://calendly.com/neuroinsight-labs/pmf-consultation";
+const CALENDLY_URL = "https://calendly.com/decoder-agency/30min";
 
 interface CalendlyButtonProps {
   className?: string;
