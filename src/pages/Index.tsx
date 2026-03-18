@@ -1,3 +1,4 @@
+import { useState } from "react";
 import Navbar from "@/components/landing/Navbar";
 import HeroSection from "@/components/landing/HeroSection";
 import WhatWeTestSection from "@/components/landing/WhatWeTestSection";
@@ -10,8 +11,17 @@ import ConsultationSection from "@/components/landing/ConsultationSection";
 import FAQSection from "@/components/landing/FAQSection";
 import Footer from "@/components/landing/Footer";
 import StickyBottomCTA from "@/components/landing/StickyBottomCTA";
+import CookieBanner from "@/components/landing/CookieBanner";
+import { clearConsent } from "@/lib/cookieConsent";
 
 const Index = () => {
+  const [cookieKey, setCookieKey] = useState(0);
+
+  const reopenCookieSettings = () => {
+    clearConsent();
+    setCookieKey((k) => k + 1);
+  };
+
   return (
     <div className="min-h-screen pb-16">
       {/* Skip to main content link for keyboard/screen reader users */}
@@ -33,8 +43,9 @@ const Index = () => {
       <ConsultationSection />
       <FAQSection />
       </main>
-      <Footer />
+      <Footer onCookieSettings={reopenCookieSettings} />
       <StickyBottomCTA />
+      <CookieBanner key={cookieKey} />
     </div>
   );
 };
