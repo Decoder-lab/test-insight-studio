@@ -4,8 +4,9 @@
   <meta charset="utf-8">
   <title>Decoder PMF</title>
   <script>
-    // GitHub Pages SPA redirect: store the path and redirect to index
-    var path = window.location.pathname;
+    // GitHub Pages SPA redirect: store the path (with query and hash, which
+    // carry auth callback params and invite tokens) and redirect to index
+    var path = window.location.pathname + window.location.search + window.location.hash;
     sessionStorage.setItem('spa_redirect', path);
     window.location.replace('/');
   </script>
