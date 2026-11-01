@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -5,26 +6,33 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Loader2 } from "lucide-react";
+import { DISAPPOINTED_OPTIONS, WOULD_BUY_OPTIONS } from "@/lib/respondent-api/questionnaire";
+import type { PostSurveyAnswers } from "@/lib/respondent-api/types";
 
 const postSurveySchema = z.object({
-  disappointed: z.string().min(1, "Please select an option"),
-  wouldBuy: z.string().min(1, "Please select an option"),
+  disappointed: z.enum(DISAPPOINTED_OPTIONS, { message: "Please select an option" }),
+  wouldBuy: z.enum(WOULD_BUY_OPTIONS, { message: "Please select an option" }),
   mostConfusing: z.string().trim().min(1, "Required").max(1000),
   likedMost: z.string().trim().min(1, "Required").max(1000),
   whatsMissing: z.string().trim().min(1, "Required").max(1000),
 });
 
-export type PostSurveyAnswers = z.infer<typeof postSurveySchema>;
+// The contract's type, not `z.infer`: without `strictNullChecks` zod infers every field as optional.
+export type { PostSurveyAnswers };
 
 interface PostSurveyProps {
-  onComplete: (data: PostSurveyAnswers) => void;
+  /** May be async: the submit button stays disabled until the returned promise settles. */
+  onComplete: (data: PostSurveyAnswers) => void | Promise<void>;
+  /** Shown above the submit button, e.g. why the last submission failed. */
+  error?: ReactNode;
+  submitLabel?: string;
 }
 
-const PostSurvey = ({ onComplete }: PostSurveyProps) => {
+const PostSurvey = ({ onComplete, error, submitLabel = "View Results" }: PostSurveyProps) => {
   const form = useForm<PostSurveyAnswers>({
     resolver: zodResolver(postSurveySchema),
-    defaultValues: { disappointed: "", wouldBuy: "", mostConfusing: "", likedMost: "", whatsMissing: "" },
+    defaultValues: { mostConfusing: "", likedMost: "", whatsMissing: "" },
   });
 
   const fields = ["disappointed", "wouldBuy", "mostConfusing", "likedMost", "whatsMissing"] as const;
@@ -49,14 +57,14 @@ const PostSurvey = ({ onComplete }: PostSurveyProps) => {
         <FormField control={form.control} name="disappointed" render={({ field }) => (
           <FormItem>
             <FormLabel>How would you feel if you could no longer use this product?</FormLabel>
-            <Select onValueChange={field.onChange} value={field.value}>
+            <Select onValueChange={field.onChange} value={field.value ?? ""}>
               <FormControl>
                 <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
               </FormControl>
               <SelectContent>
-                <SelectItem value="Very disappointed">Very disappointed</SelectItem>
-                <SelectItem value="Somewhat disappointed">Somewhat disappointed</SelectItem>
-                <SelectItem value="Not disappointed">Not disappointed</SelectItem>
+                {DISAPPOINTED_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <FormMessage />
@@ -66,14 +74,14 @@ const PostSurvey = ({ onComplete }: PostSurveyProps) => {
         <FormField control={form.control} name="wouldBuy" render={({ field }) => (
           <FormItem>
             <FormLabel>Would you buy this product?</FormLabel>
-            <Select onValueChange={field.onChange} value={field.value}>
+            <Select onValueChange={field.onChange} value={field.value ?? ""}>
               <FormControl>
                 <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
               </FormControl>
               <SelectContent>
-                <SelectItem value="Yes">Yes</SelectItem>
-                <SelectItem value="Maybe">Maybe</SelectItem>
-                <SelectItem value="No">No</SelectItem>
+                {WOULD_BUY_OPTIONS.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <FormMessage />
@@ -104,8 +112,15 @@ const PostSurvey = ({ onComplete }: PostSurveyProps) => {
           </FormItem>
         )} />
 
-        <Button type="submit" className="bg-accent text-accent-foreground rounded-full px-6 gap-2 hover:brightness-95">
-          View Results <ArrowUpRight className="w-4 h-4" />
+        {error}
+
+        <Button
+          type="submit"
+          disabled={form.formState.isSubmitting}
+          className="bg-accent text-accent-foreground rounded-full px-6 gap-2 hover:brightness-95"
+        >
+          {submitLabel}
+          {form.formState.isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpRight className="w-4 h-4" />}
         </Button>
       </form>
     </Form>

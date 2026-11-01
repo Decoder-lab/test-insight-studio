@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Test Insight Studio Backend API
-  version: 0.3.0-draft
+  version: 0.4.0-draft
   summary: Contract between the public React frontend and the Supabase backend.
   description: |
     Canonical contract for two logical APIs implemented as Supabase Edge Functions:
@@ -12,9 +12,9 @@ info:
     ## Status of this document
 
     This is a **draft**. The `admin-api` operations and the `respondent-api` operations
-    `validateInvitation` and `getRespondentProject` are implemented and tested locally but are not
-    deployed to the hosted project yet; the other `respondent-api` business operations still answer
-    `501 not_implemented` (after the invitation token has been checked).
+    `validateInvitation`, `getRespondentProject` and `submitQuestionnaire` are implemented and tested
+    locally but are not deployed to the hosted project yet; the other `respondent-api` business
+    operations still answer `501 not_implemented` (after the invitation token has been checked).
 
     * **Confirmed** (from the project brief): the set of planned operations, the two authentication
       models, the 120 second recording limit, the 50 MB object size limit (Supabase Free plan), the
@@ -26,9 +26,11 @@ info:
     * **Confirmed after review**: `validateInvitation` and `getRespondentProject` carry
       `x-status: confirmed` because Track A reviewed and signed them off after implementation
       (2026-11-01). The other respondent operations stay `proposed` until they are implemented and
-      reviewed.
+      reviewed. `submitQuestionnaire` is implemented but still `proposed`: Track A has not reviewed
+      the implementation yet.
 
-    Questionnaire fields are deliberately **not** defined: the questionnaire has not been specified.
+    The questionnaire answers are defined by the frontend's survey schemas (`QuestionnaireAnswers`).
+    No other questionnaire field exists; a new question is a contract change.
 
     ## References to backend documents
 
@@ -366,7 +368,29 @@ paths:
       operationId: submitQuestionnaire
       tags: [respondent]
       summary: Submit (or replace) the questionnaire answers
-      description: Idempotent. Allowed until the project is completed.
+      description: |
+        Stores the respondent's answers for the invited project. The project always comes from the
+        invitation token; the request carries no project id.
+
+        **Replaces, never merges.** The stored answers become exactly the submitted ones, so a
+        client that sends the post-survey must repeat the pre-survey answers, and a later request
+        without `postSurvey` removes a stored post-survey. Idempotent: repeating a request stores
+        the same answers again and only moves `submittedAt`.
+
+        Typical use: send `{ "answers": { "preSurvey": { ... } } }` after the pre-survey, then
+        `{ "answers": { "preSurvey": { ... }, "postSurvey": { ... } } }` after the post-survey.
+
+        Validation is strict: unknown keys anywhere, missing keys, wrong types and out-of-range
+        values answer `400 validation_error`. Text answers are trimmed before they are validated and
+        stored. The request body may be at most 32 KiB (32768 bytes); every body that satisfies
+        the schema fits, so a larger one is answered with `400 validation_error` too.
+
+        Effects: the first accepted request moves the project from `CREATED` to `IN_PROGRESS`.
+        It does **not** start the invitation (the link keeps opening, see `validateInvitation`).
+        `progress.questionnaireSubmitted` becomes `true` once a `postSurvey` is stored, not before.
+
+        Allowed with any invitation that is not revoked or expired-before-start, including one whose
+        test has already started. Answers `409 conflict` once the project is `READY`.
       x-status: proposed
       security:
         - invitationToken: []
@@ -860,6 +884,9 @@ components:
           properties:
             questionnaireSubmitted:
               type: boolean
+              description: |
+                `true` once the stored answers contain a `postSurvey`, i.e. the whole questionnaire
+                is answered. A pre-survey alone leaves it `false`. `completeProject` requires it.
             recordings:
               type: object
               required: [camera, screen]
@@ -870,15 +897,74 @@ components:
                   $ref: "#/components/schemas/RecordingProgress"
     QuestionnaireSubmission:
       type: object
-      description: |
-        PLACEHOLDER. The questionnaire has not been specified, so no fields are invented here. Replace
-        `answers` with a concrete schema once the questionnaire definition exists.
+      description: The complete set of answers to store. It replaces whatever was stored before.
       required: [answers]
       additionalProperties: false
       properties:
         answers:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/QuestionnaireAnswers"
+    QuestionnaireAnswers:
+      type: object
+      description: |
+        `preSurvey` is required in every submission. `postSurvey` is omitted until the post-survey
+        is done (it must not be `null`).
+      required: [preSurvey]
+      additionalProperties: false
+      properties:
+        preSurvey:
+          $ref: "#/components/schemas/PreSurveyAnswers"
+        postSurvey:
+          $ref: "#/components/schemas/PostSurveyAnswers"
+    AnswerText:
+      type: string
+      description: |
+        Free text. Leading and trailing whitespace is removed first; the trimmed text must then be
+        1 to 1000 characters (UTF-16 code units, as in JavaScript `String.length`). A NUL character
+        (U+0000) and lone surrogates are rejected.
+      minLength: 1
+      maxLength: 1000
+    BudgetRange:
+      type: string
+      description: Keep in sync with `BUDGET_RANGES` in supabase/functions/respondent-api/questionnaire.ts.
+      enum: ["<€1K", "€1-5K", "€5-10K", ">€10K"]
+    DisappointmentLevel:
+      type: string
+      description: Keep in sync with `DISAPPOINTED_OPTIONS` in supabase/functions/respondent-api/questionnaire.ts.
+      enum: [Very disappointed, Somewhat disappointed, Not disappointed]
+    PurchaseIntent:
+      type: string
+      description: Keep in sync with `WOULD_BUY_OPTIONS` in supabase/functions/respondent-api/questionnaire.ts.
+      enum: ["Yes", "Maybe", "No"]
+    PreSurveyAnswers:
+      type: object
+      required: [problemToSolve, buyMotivation, budgetRange, urgency]
+      additionalProperties: false
+      properties:
+        problemToSolve:
+          $ref: "#/components/schemas/AnswerText"
+        buyMotivation:
+          $ref: "#/components/schemas/AnswerText"
+        budgetRange:
+          $ref: "#/components/schemas/BudgetRange"
+        urgency:
+          type: integer
+          minimum: 1
+          maximum: 5
+    PostSurveyAnswers:
+      type: object
+      required: [disappointed, wouldBuy, mostConfusing, likedMost, whatsMissing]
+      additionalProperties: false
+      properties:
+        disappointed:
+          $ref: "#/components/schemas/DisappointmentLevel"
+        wouldBuy:
+          $ref: "#/components/schemas/PurchaseIntent"
+        mostConfusing:
+          $ref: "#/components/schemas/AnswerText"
+        likedMost:
+          $ref: "#/components/schemas/AnswerText"
+        whatsMissing:
+          $ref: "#/components/schemas/AnswerText"
     QuestionnaireReceipt:
       type: object
       required: [submittedAt]
@@ -886,6 +972,7 @@ components:
         submittedAt:
           type: string
           format: date-time
+          description: When the stored answers were last replaced.
     CreateUploadUrlRequest:
       type: object
       required: [contentType]

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -5,8 +6,52 @@ import { RespondentApiError } from "@/lib/respondent-api/errors";
 import type { RespondentProject } from "@/lib/respondent-api/types";
 import RespondentPage from "./RespondentPage";
 
-const api = vi.hoisted(() => ({ validateInvitation: vi.fn() }));
+const api = vi.hoisted(() => ({ validateInvitation: vi.fn(), submitQuestionnaire: vi.fn() }));
 vi.mock("@/lib/respondent-api/client", () => ({ respondentApi: api }));
+
+const answers = vi.hoisted(() => ({
+  pre: { problemToSolve: "Slow onboarding", buyMotivation: "Saves time", budgetRange: "€1-5K", urgency: 4 },
+  post: {
+    disappointed: "Very disappointed",
+    wouldBuy: "Yes",
+    mostConfusing: "Pricing",
+    likedMost: "Speed",
+    whatsMissing: "Export",
+  },
+}));
+
+// The real surveys use Radix Select, which cannot be driven with fireEvent in jsdom, and the real
+// recording session needs camera and screen capture. These stubs submit canned data instead.
+interface StepProps {
+  onComplete: (data?: unknown) => void | Promise<void>;
+  error?: ReactNode;
+}
+vi.mock("@/components/PreSurvey", () => ({
+  default: ({ onComplete, error }: StepProps) => (
+    <section>
+      <h2>Pre-survey step</h2>
+      {error}
+      <button onClick={() => void onComplete(answers.pre)}>submit pre-survey</button>
+    </section>
+  ),
+}));
+vi.mock("@/components/RecordingSession", () => ({
+  default: ({ onComplete }: StepProps) => (
+    <section>
+      <h2>Recording step</h2>
+      <button onClick={() => void onComplete()}>finish recording</button>
+    </section>
+  ),
+}));
+vi.mock("@/components/PostSurvey", () => ({
+  default: ({ onComplete, error }: StepProps) => (
+    <section>
+      <h2>Post-survey step</h2>
+      {error}
+      <button onClick={() => void onComplete(answers.post)}>submit post-survey</button>
+    </section>
+  ),
+}));
 
 const TOKEN = "SECRET-TOKEN";
 
@@ -44,7 +89,23 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   api.validateInvitation.mockResolvedValue(project());
+  api.submitQuestionnaire.mockResolvedValue({ submittedAt: "2026-11-01T10:00:00Z" });
 });
+
+const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
+const preSurvey = () => screen.findByRole("heading", { name: "Pre-survey step" });
+const recording = () => screen.findByRole("heading", { name: "Recording step" });
+const postSurvey = () => screen.findByRole("heading", { name: "Post-survey step" });
+
+// Walks a respondent from the pre-survey up to the post-survey.
+const reachPostSurvey = async () => {
+  renderPage();
+  await preSurvey();
+  click("submit pre-survey");
+  await recording();
+  click("finish recording");
+  await postSurvey();
+};
 
 describe("without a token", () => {
   it.each(["/test", "/test#", "/test#invite=", "/test#other=x"])("asks for the invitation link at %s", (entry) => {
@@ -60,7 +121,7 @@ describe("with a token", () => {
   it("validates the token from the URL fragment", async () => {
     renderPage();
 
-    await screen.findByText("Placeholder for the test");
+    await preSurvey();
     expect(api.validateInvitation).toHaveBeenCalledWith(TOKEN);
   });
 
@@ -71,23 +132,20 @@ describe("with a token", () => {
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
   });
 
-  it("shows the project details returned by the backend", async () => {
+  it("starts with the pre-survey and the step indicator, without the demo badge", async () => {
     renderPage();
 
-    expect(await screen.findByText("Pilot test")).toBeInTheDocument();
-    expect(screen.getByText("Ready")).toBeInTheDocument();
-    expect(screen.getByText("120 seconds")).toBeInTheDocument();
-    expect(screen.getByText("50 MB")).toBeInTheDocument();
-    expect(screen.getByText("video/webm, video/mp4")).toBeInTheDocument();
-    expect(screen.getByText("Not submitted")).toBeInTheDocument();
-    expect(screen.getByText("Not started")).toBeInTheDocument();
-    expect(screen.getByText("Verified")).toBeInTheDocument();
+    await preSurvey();
+    expect(screen.getByText("Pre-Survey", { selector: "[aria-current=page]" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    expect(screen.queryByText("DEMO")).not.toBeInTheDocument();
+    expect(api.submitQuestionnaire).not.toHaveBeenCalled();
   });
 
   it("removes the token from the URL once it has been read, keeping the rest of the URL", async () => {
     renderPage(`/test?lang=en#invite=${TOKEN}`);
 
-    expect(await screen.findByText("Pilot test")).toBeInTheDocument();
+    await preSurvey();
     expect(screen.getByTestId("url")).toHaveTextContent(/^\/test\?lang=en$/);
     expect(document.body.textContent).not.toContain(TOKEN);
   });
@@ -95,38 +153,132 @@ describe("with a token", () => {
   it("validates once with the token it captured, not again after the URL is cleaned", async () => {
     renderPage();
 
-    await screen.findByText("Pilot test");
+    await preSurvey();
     expect(api.validateInvitation).toHaveBeenCalledTimes(1);
     expect(api.validateInvitation).toHaveBeenCalledWith(TOKEN);
   });
 
   it("keeps showing the project after the URL no longer carries a token", async () => {
     renderPage();
-    await screen.findByText("Pilot test");
+    await preSurvey();
 
     expect(screen.getByTestId("url")).toHaveTextContent(/^\/test$/);
     expect(screen.queryByRole("heading", { name: "Invitation required" })).not.toBeInTheDocument();
   });
 
-  it("switches to a new link opened in the same tab", async () => {
+  it("starts over with a new link opened in the same tab, and submits with the new token", async () => {
     renderPage();
-    await screen.findByText("Pilot test");
-    api.validateInvitation.mockResolvedValue(project({ name: "Another test" }));
+    await preSurvey();
+    click("submit pre-survey");
+    await recording();
 
-    fireEvent.click(screen.getByRole("button", { name: "open another link" }));
+    click("open another link");
 
-    expect(await screen.findByText("Another test")).toBeInTheDocument();
-    expect(api.validateInvitation).toHaveBeenLastCalledWith("OTHER-TOKEN");
+    await waitFor(() => expect(api.validateInvitation).toHaveBeenLastCalledWith("OTHER-TOKEN"));
+    await preSurvey();
     expect(screen.getByTestId("url")).toHaveTextContent(/^\/test$/);
+    click("submit pre-survey");
+    await recording();
+    expect(api.submitQuestionnaire).toHaveBeenLastCalledWith("OTHER-TOKEN", { preSurvey: answers.pre });
   });
 
-  it("never renders the token or writes it to storage", async () => {
-    renderPage();
-    await screen.findByText("Pilot test");
+  it("never renders the token or writes it to storage, through the whole test", async () => {
+    await reachPostSurvey();
+    click("submit post-survey");
+    await screen.findByRole("heading", { name: "Thank you!" });
 
     expect(document.body.textContent).not.toContain(TOKEN);
     expect(JSON.stringify({ ...localStorage })).not.toContain(TOKEN);
     expect(JSON.stringify({ ...sessionStorage })).not.toContain(TOKEN);
+  });
+});
+
+describe("the test", () => {
+  it("sends the pre-survey with the token, then moves on to the recording", async () => {
+    renderPage();
+    await preSurvey();
+
+    click("submit pre-survey");
+
+    await recording();
+    expect(api.submitQuestionnaire).toHaveBeenCalledTimes(1);
+    expect(api.submitQuestionnaire).toHaveBeenCalledWith(TOKEN, { preSurvey: answers.pre });
+  });
+
+  it("does not send anything for the recording step", async () => {
+    renderPage();
+    await preSurvey();
+    click("submit pre-survey");
+    await recording();
+
+    click("finish recording");
+
+    await postSurvey();
+    expect(api.submitQuestionnaire).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends both surveys with the post-survey, then thanks the respondent", async () => {
+    await reachPostSurvey();
+
+    click("submit post-survey");
+
+    expect(await screen.findByRole("heading", { name: "Thank you!" })).toBeInTheDocument();
+    expect(api.submitQuestionnaire).toHaveBeenCalledTimes(2);
+    expect(api.submitQuestionnaire).toHaveBeenLastCalledWith(TOKEN, {
+      preSurvey: answers.pre,
+      postSurvey: answers.post,
+    });
+    expect(screen.queryByRole("heading", { name: "Post-survey step" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("stays on the pre-survey when it could not be sent, and goes on after a second attempt", async () => {
+    api.submitQuestionnaire.mockRejectedValueOnce(new RespondentApiError("not_ready", 501));
+    renderPage();
+    await preSurvey();
+
+    click("submit pre-survey");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The test service isn't available yet.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Your answers were not sent.");
+    expect(screen.getByRole("heading", { name: "Pre-survey step" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Recording step" })).not.toBeInTheDocument();
+
+    click("submit pre-survey");
+
+    await recording();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(api.submitQuestionnaire).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays on the post-survey when it could not be sent, and sends everything again on the second attempt", async () => {
+    await reachPostSurvey();
+    api.submitQuestionnaire.mockRejectedValueOnce(new RespondentApiError("validation", 400));
+
+    click("submit post-survey");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not be accepted");
+    expect(screen.queryByRole("heading", { name: "Thank you!" })).not.toBeInTheDocument();
+
+    click("submit post-survey");
+
+    expect(await screen.findByRole("heading", { name: "Thank you!" })).toBeInTheDocument();
+    expect(api.submitQuestionnaire).toHaveBeenLastCalledWith(TOKEN, {
+      preSurvey: answers.pre,
+      postSurvey: answers.post,
+    });
+  });
+
+  it("does not show the server's message or the token when sending fails", async () => {
+    api.submitQuestionnaire.mockRejectedValue(new RespondentApiError("unexpected", 500));
+    renderPage();
+    await preSurvey();
+
+    click("submit pre-survey");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Unexpected response from the server.");
+    expect(document.body.textContent).not.toContain(TOKEN);
   });
 });
 
@@ -154,7 +306,7 @@ describe("errors", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
 
-    expect(await screen.findByText("Pilot test")).toBeInTheDocument();
+    await preSurvey();
     await waitFor(() => expect(api.validateInvitation).toHaveBeenCalledTimes(2));
   });
 

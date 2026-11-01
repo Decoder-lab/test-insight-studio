@@ -1,6 +1,6 @@
 import { invokeFunction, type FunctionResponse } from "@/lib/supabase";
 import { RespondentApiError } from "./errors";
-import type { ErrorCode, RespondentProject } from "./types";
+import type { ErrorCode, QuestionnaireAnswers, QuestionnaireReceipt, RespondentProject } from "./types";
 
 const API = "respondent-api";
 
@@ -31,6 +31,8 @@ function toError({ status, body }: FunctionResponse): RespondentApiError {
   if (code === "invitation_revoked") return new RespondentApiError("revoked", status, code);
   if (code === "invitation_started") return new RespondentApiError("started", status, code);
   if (status === 429 || code === "rate_limited") return new RespondentApiError("rate_limited", status, code ?? undefined);
+  if (code === "validation_error") return new RespondentApiError("validation", status, code);
+  if (code === "conflict") return new RespondentApiError("conflict", status, code);
   if (status === 501 || code === "not_implemented") return new RespondentApiError("not_ready", status, code ?? undefined);
   // No envelope means the platform answered, not our function: it is not deployed (404) or not up (502-504).
   if (!code && [404, 502, 503, 504].includes(status)) return new RespondentApiError("not_ready", status);
@@ -66,6 +68,10 @@ function isRespondentProject(body: unknown): body is RespondentProject {
   );
 }
 
+const isReceipt = (body: unknown): body is QuestionnaireReceipt => isObject(body) && typeof body.submittedAt === "string";
+
+const isSuccess = (status: number) => status >= 200 && status < 300;
+
 /**
  * The respondent API client. The invitation token is a password: it is only ever passed
  * through to the request header, never stored, logged or put in a URL.
@@ -84,8 +90,29 @@ export const respondentApi = {
       headers: { [TOKEN_HEADER]: token },
     });
 
-    if (response.status >= 200 && response.status < 300) {
+    if (isSuccess(response.status)) {
       if (!isRespondentProject(response.body)) throw new RespondentApiError("unexpected", response.status);
+      return response.body;
+    }
+    throw toError(response);
+  },
+
+  /**
+   * Submits (or replaces) the questionnaire answers. Idempotent, allowed until the project is completed.
+   * @param token The invitation token held in memory by the caller.
+   * @param answers The answers to store; they replace any earlier submission as a whole.
+   * @returns The receipt with the time the backend stored the answers.
+   */
+  async submitQuestionnaire(token: string, answers: QuestionnaireAnswers): Promise<QuestionnaireReceipt> {
+    const response = await invokeFunction({
+      method: "PUT",
+      path: `${API}/questionnaire-response`,
+      headers: { [TOKEN_HEADER]: token },
+      body: { answers },
+    });
+
+    if (isSuccess(response.status)) {
+      if (!isReceipt(response.body)) throw new RespondentApiError("unexpected", response.status);
       return response.body;
     }
     throw toError(response);

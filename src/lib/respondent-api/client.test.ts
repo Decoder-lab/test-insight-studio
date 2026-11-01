@@ -5,6 +5,7 @@ vi.mock("@/lib/supabase", () => ({ invokeFunction: lib.invokeFunction }));
 
 import { respondentApi } from "./client";
 import { RespondentApiError, describeRespondentError, isRetryable } from "./errors";
+import type { QuestionnaireAnswers } from "./types";
 
 const TOKEN = "SECRET-TOKEN";
 
@@ -19,14 +20,19 @@ const project = () => ({
 const envelope = (code: string, message = "server text") => ({ error: { code, message } });
 const respond = (status: number, body: unknown = null) => lib.invokeFunction.mockResolvedValueOnce({ status, body });
 
-const failure = async () => {
-  const error = await respondentApi.validateInvitation(TOKEN).then(
+const failure = async (call: () => Promise<unknown> = () => respondentApi.validateInvitation(TOKEN)) => {
+  const error = await call().then(
     () => null,
     (caught: unknown) => caught,
   );
   expect(error).toBeInstanceOf(RespondentApiError);
   return error as RespondentApiError;
 };
+
+const ANSWERS: QuestionnaireAnswers = {
+  preSurvey: { problemToSolve: "Slow onboarding", buyMotivation: "Saves time", budgetRange: "€1-5K", urgency: 4 },
+};
+const submitFailure = () => failure(() => respondentApi.submitQuestionnaire(TOKEN, ANSWERS));
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -55,6 +61,57 @@ describe("validateInvitation", () => {
     respond(200, null);
 
     expect((await failure()).kind).toBe("unexpected");
+  });
+});
+
+describe("submitQuestionnaire", () => {
+  it("puts the answers to the contract's path with the token in the header, not in the URL or body", async () => {
+    respond(200, { submittedAt: "2026-11-01T10:00:00Z" });
+
+    await expect(respondentApi.submitQuestionnaire(TOKEN, ANSWERS)).resolves.toEqual({
+      submittedAt: "2026-11-01T10:00:00Z",
+    });
+
+    expect(lib.invokeFunction).toHaveBeenCalledWith({
+      method: "PUT",
+      path: "respondent-api/questionnaire-response",
+      headers: { "X-Invitation-Token": TOKEN },
+      body: { answers: ANSWERS },
+    });
+  });
+
+  it.each([null, {}, { submittedAt: 123 }])("treats the success body %j as unexpected", async (body) => {
+    respond(200, body);
+
+    expect((await submitFailure()).kind).toBe("unexpected");
+  });
+
+  it.each([
+    [400, envelope("validation_error"), "validation"],
+    [409, envelope("conflict"), "conflict"],
+    [401, envelope("invalid_invitation"), "invalid"],
+    [410, envelope("invitation_revoked"), "revoked"],
+    [410, envelope("invitation_expired"), "expired"],
+    [429, envelope("rate_limited"), "rate_limited"],
+    [501, envelope("not_implemented"), "not_ready"],
+    [404, null, "not_ready"],
+    [500, envelope("internal_error"), "unexpected"],
+    [0, null, "network"],
+  ])("maps status %d with %j to %s", async (status, body, kind) => {
+    respond(status, body);
+
+    const error = await submitFailure();
+
+    expect(error.kind).toBe(kind);
+    expect(error.status).toBe(status);
+  });
+
+  it("does not take a bare 400 or 409 from the platform for a rejected submission", async () => {
+    respond(400, null);
+    expect((await submitFailure()).kind).toBe("unexpected");
+
+    respond(409, null);
+    expect((await submitFailure()).kind).toBe("unexpected");
   });
 });
 
@@ -110,6 +167,17 @@ describe("describeRespondentError", () => {
     expect(text).not.toContain(TOKEN);
   });
 
+  it("explains a rejected or conflicting submission without the server's message", async () => {
+    respond(400, envelope("validation_error", `field problemToSolve is bad, token ${TOKEN}`));
+    const rejected = describeRespondentError(await submitFailure());
+    respond(409, envelope("conflict", "project is READY"));
+    const conflict = describeRespondentError(await submitFailure());
+
+    expect(rejected).toContain("could not be accepted");
+    expect(conflict).toContain("can no longer be changed");
+    expect(rejected + conflict).not.toMatch(new RegExp(`${TOKEN}|problemToSolve|READY`));
+  });
+
   it("offers a retry only where trying again can help", () => {
     expect(isRetryable(new RespondentApiError("network", 0))).toBe(true);
     expect(isRetryable(new RespondentApiError("rate_limited", 429))).toBe(true);
@@ -119,5 +187,7 @@ describe("describeRespondentError", () => {
     expect(isRetryable(new RespondentApiError("revoked", 410))).toBe(false);
     expect(isRetryable(new RespondentApiError("started", 410))).toBe(false);
     expect(isRetryable(new RespondentApiError("not_ready", 501))).toBe(false);
+    expect(isRetryable(new RespondentApiError("validation", 400))).toBe(false);
+    expect(isRetryable(new RespondentApiError("conflict", 409))).toBe(false);
   });
 });
