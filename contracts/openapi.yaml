@@ -1,0 +1,950 @@
+openapi: 3.1.0
+info:
+  title: Test Insight Studio Backend API
+  version: 0.3.0-draft
+  summary: Contract between the public React frontend and the Supabase backend.
+  description: |
+    Canonical contract for two logical APIs implemented as Supabase Edge Functions:
+
+    * **admin-api** - used by administrators signed in with Supabase Auth.
+    * **respondent-api** - used by respondents holding an opaque invitation token (no Supabase account).
+
+    ## Status of this document
+
+    This is a **draft**. The `admin-api` operations and the `respondent-api` operations
+    `validateInvitation` and `getRespondentProject` are implemented and tested locally but are not
+    deployed to the hosted project yet; the other `respondent-api` business operations still answer
+    `501 not_implemented` (after the invitation token has been checked).
+
+    * **Confirmed** (from the project brief): the set of planned operations, the two authentication
+      models, the 120 second recording limit, the 50 MB object size limit (Supabase Free plan), the
+      private `recordings` bucket with separate camera and screen recordings, direct browser-to-Storage
+      uploads through server-issued signed upload URLs, and the `READY` project status.
+    * **Proposed** (everything else): paths, field names, extra statuses, error codes and the
+      invitation header. These are marked `x-status: proposed` and **must be reviewed with Track A
+      (frontend) before implementation**.
+    * **Confirmed after review**: `validateInvitation` and `getRespondentProject` carry
+      `x-status: confirmed` because Track A reviewed and signed them off after implementation
+      (2026-11-01). The other respondent operations stay `proposed` until they are implemented and
+      reviewed.
+
+    Questionnaire fields are deliberately **not** defined: the questionnaire has not been specified.
+
+    ## References to backend documents
+
+    Mentions of `docs/...` files and `ADR-nnn` point into the backend repository, which is not
+    distributed with this file. They only record the rationale. Every rule a client depends on is
+    stated in this contract itself, so nothing here requires reading them.
+
+    ## Authentication
+
+    | API | Credential | Where |
+    | --- | --- | --- |
+    | admin-api | Supabase Auth access token of an administrator | `Authorization: Bearer <access token>` |
+    | respondent-api | Opaque invitation token | `X-Invitation-Token: <token>` |
+
+    Both APIs also accept the project's publishable key in the `apikey` header (supabase-js sends it
+    automatically). Whether the platform gateway *requires* it for `respondent-api` is to be verified
+    by Track C; always sending it is safe. Never send a secret or service-role key from a browser.
+
+    ## Errors
+
+    Every non-2xx response uses the `ErrorResponse` envelope. Clients must branch on `error.code`, never on `error.message`.
+
+    ## Rate limiting
+
+    Every `respondent-api` business operation is rate limited per client IP address. A blocked request
+    answers `429` with `error.code = rate_limited` and a `Retry-After` header (seconds). The API
+    exposes `Retry-After` to browsers through `Access-Control-Expose-Headers`.
+
+    ## Obtaining updated contracts
+
+    This file contains no secrets and may be copied or fetched without any Supabase credentials. See
+    `docs/architecture.md` ("Contract distribution") for the agreed workflow.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: http://127.0.0.1:54321/functions/v1
+    description: Local Supabase (`npm run supabase:start`)
+  - url: "{supabaseUrl}/functions/v1"
+    description: Hosted Supabase project
+    variables:
+      supabaseUrl:
+        default: https://PROJECT-REF.supabase.co
+        description: Project URL from the Supabase dashboard (public value).
+tags:
+  - name: admin
+    description: Administrator operations. Requires a Supabase Auth access token and the administrator role.
+  - name: respondent
+    description: Respondent operations. Requires a valid invitation token; always scoped to the invited project.
+  - name: system
+    description: Operational endpoints.
+security: []
+paths:
+  /admin-api/health:
+    get:
+      operationId: adminHealth
+      tags: [system]
+      summary: Admin API liveness check
+      description: |
+        Needs no application-level credential, but the platform gateway still requires a valid JWT
+        for `admin-api`, so unauthenticated browsers will receive `401` from the gateway.
+      x-status: proposed
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /admin-api/project-fields:
+    get:
+      operationId: listProjectFields
+      tags: [admin]
+      summary: List the definitions of the extra project fields
+      description: |
+        Returns the active field definitions (archived ones are omitted), ordered by `position`, so
+        the create-project form can be rendered from data. The list is empty until fields are
+        defined. Definitions are managed by the backend team (see docs/decisions.md, ADR-013); there
+        is no operation to edit them from the admin panel yet.
+      x-status: proposed
+      security:
+        - adminBearer: []
+      responses:
+        "200":
+          description: Active field definitions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectFieldList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin-api/projects:
+    get:
+      operationId: listProjects
+      tags: [admin]
+      summary: List projects
+      x-status: proposed
+      security:
+        - adminBearer: []
+      parameters:
+        - name: status
+          in: query
+          description: Only return projects in this status.
+          schema:
+            $ref: "#/components/schemas/ProjectStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: cursor
+          in: query
+          description: Opaque cursor from a previous response's `nextCursor`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of projects, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      operationId: createProject
+      tags: [admin]
+      summary: Create a project
+      x-status: proposed
+      security:
+        - adminBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: Project created in status `CREATED`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin-api/projects/{projectId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProject
+      tags: [admin]
+      summary: Get project details
+      x-status: proposed
+      security:
+        - adminBearer: []
+      responses:
+        "200":
+          description: Project with invitation history and recording progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetails"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /admin-api/projects/{projectId}/invitations:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: createInvitation
+      tags: [admin]
+      summary: Generate or renew the respondent invitation
+      description: |
+        Creates a new invitation and **revokes any previously active invitation** of the project, so
+        this operation both generates and renews. The plaintext `token` is returned **exactly once**;
+        only its hash is stored, so it cannot be retrieved later. The frontend builds the shareable
+        link from the token (the backend does not know the frontend's URL structure). Answers
+        `409 conflict` when the project is already `READY`.
+      x-status: proposed
+      security:
+        - adminBearer: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInvitationRequest"
+      responses:
+        "201":
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateInvitationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /admin-api/projects/{projectId}/invitations/{invitationId}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: invitationId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: revokeInvitation
+      tags: [admin]
+      summary: Revoke an invitation
+      description: Idempotent. A revoked invitation stops working immediately.
+      x-status: proposed
+      security:
+        - adminBearer: []
+      responses:
+        "200":
+          description: Invitation is revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /respondent-api/health:
+    get:
+      operationId: respondentHealth
+      tags: [system]
+      summary: Respondent API liveness check
+      x-status: proposed
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /respondent-api/invitation/validate:
+    post:
+      operationId: validateInvitation
+      tags: [respondent]
+      summary: Validate the invitation token
+      description: |
+        Call this first when the respondent opens the invitation link. An unknown token yields a
+        generic `401 invalid_invitation`. Once the token is recognised, revocation, expiry and the
+        start of the test are reported specifically (`410`), which is safe because the caller has
+        proven possession.
+
+        Idempotent and free of lifecycle side effects: the link may be opened any number of times
+        while it is active (page refresh, retry). The only thing that changes is the invitation's
+        `lastUsedAt`. Validating never marks the invitation as started.
+
+        Lifecycle of an invitation: its link opens until it expires, is revoked, or the respondent
+        starts the test. Once the test has started the link no longer opens: this operation answers
+        `410 invitation_started`. The other respondent operations keep accepting the same token after
+        that, so a client that already holds the token can finish the test. Expiry only gates the
+        start: it never interrupts a test that is already running. Only revocation (an administrator
+        revoking or renewing the invitation) stops a started token; then every respondent operation
+        answers `410 invitation_revoked`.
+      x-status: confirmed
+      security:
+        - invitationToken: []
+      responses:
+        "200":
+          description: Invitation is valid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RespondentProject"
+        "401":
+          $ref: "#/components/responses/InvalidInvitation"
+        "410":
+          $ref: "#/components/responses/InvitationGone"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /respondent-api/project:
+    get:
+      operationId: getRespondentProject
+      tags: [respondent]
+      summary: Get the project information the respondent is allowed to see
+      description: |
+        Same body as `validateInvitation`. Unlike it, this operation also answers `200` after the
+        respondent has started the test, even past the invitation's `expiresAt`. It is `410` only for
+        a revoked invitation or one that expired before the test started.
+      x-status: confirmed
+      security:
+        - invitationToken: []
+      responses:
+        "200":
+          description: Allowed project information and current progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RespondentProject"
+        "401":
+          $ref: "#/components/responses/InvalidInvitation"
+        "410":
+          $ref: "#/components/responses/InvitationGone"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /respondent-api/questionnaire-response:
+    put:
+      operationId: submitQuestionnaire
+      tags: [respondent]
+      summary: Submit (or replace) the questionnaire answers
+      description: Idempotent. Allowed until the project is completed.
+      x-status: proposed
+      security:
+        - invitationToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuestionnaireSubmission"
+      responses:
+        "200":
+          description: Answers stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionnaireReceipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidInvitation"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/InvitationGone"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /respondent-api/recordings/{kind}/upload-url:
+    parameters:
+      - $ref: "#/components/parameters/RecordingKind"
+    post:
+      operationId: createUploadUrl
+      tags: [respondent]
+      summary: Request a signed Storage upload permission for one recording
+      description: |
+        Returns a path and token for the private `recordings` bucket. The browser then uploads
+        directly to Storage, for example with supabase-js
+        `supabase.storage.from(bucket).uploadToSignedUrl(path, token, blob, { contentType })`.
+
+        The path is generated by the server and is specific to the invited project and recording
+        kind; clients cannot choose it. The token has a platform-defined lifetime and is only valid for
+        that single path. Requesting a new URL for the same `kind` replaces an unverified earlier
+        attempt, but never a verified recording.
+
+        Upload with a bare MIME type (`video/webm`), without codec parameters, so the bucket's MIME
+        allow-list matches.
+      x-status: proposed
+      security:
+        - invitationToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUploadUrlRequest"
+      responses:
+        "200":
+          description: Signed upload permission.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidInvitation"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/InvitationGone"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /respondent-api/recordings/{kind}/verify:
+    parameters:
+      - $ref: "#/components/parameters/RecordingKind"
+    post:
+      operationId: verifyRecording
+      tags: [respondent]
+      summary: Verify an uploaded recording
+      description: |
+        Call after the browser upload finished. The server checks that the object exists at the
+        expected path, is within the size limit, and has an allowed content type. The duration is
+        reported by the client and checked against the 120 second limit; the server cannot fully verify
+        it (see docs/security.md, "Recording constraints").
+      x-status: proposed
+      security:
+        - invitationToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyRecordingRequest"
+      responses:
+        "200":
+          description: Recording verified (idempotent).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyRecordingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/InvalidInvitation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/InvitationGone"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /respondent-api/complete:
+    post:
+      operationId: completeProject
+      tags: [respondent]
+      summary: Complete the project
+      description: |
+        Succeeds only when the questionnaire is submitted and both recordings are verified. Moves the
+        project to `READY` and publishes the `ProjectReady` event in the same database transaction.
+        Idempotent: completing an already `READY` project returns the same result.
+      x-status: proposed
+      security:
+        - invitationToken: []
+      responses:
+        "200":
+          description: Project is `READY`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompleteProjectResponse"
+        "401":
+          $ref: "#/components/responses/InvalidInvitation"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          $ref: "#/components/responses/InvitationGone"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+components:
+  securitySchemes:
+    adminBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase Auth access token of an administrator (`session.access_token`).
+    invitationToken:
+      type: apiKey
+      in: header
+      name: X-Invitation-Token
+      description: |
+        Opaque, cryptographically random invitation token. Treat it like a password: keep it out of
+        logs and analytics, and never put it in an API query string (API calls carry it only in this
+        header). The shareable link built by the frontend is `/test#invite=<token>` (docs/decisions.md,
+        ADR-015): the token is in the URL fragment, which is never sent to a server, and the frontend
+        must remove it from the address bar right after reading it.
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RecordingKind:
+      name: kind
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/RecordingKind"
+  responses:
+    BadRequest:
+      description: The request is malformed or failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: Missing, invalid or expired Supabase Auth access token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Authenticated, but not an administrator.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: The resource does not exist (or is not visible to the caller).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: The request conflicts with the current state of the project.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InvalidInvitation:
+      description: Missing or unknown invitation token (`invalid_invitation`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InvitationGone:
+      description: |
+        The invitation was recognised but cannot be used: it is revoked (`invitation_revoked`),
+        expired before the test started (`invitation_expired`) or, for `validateInvitation` only,
+        already started (`invitation_started`). A revoked invitation is always reported as revoked.
+        `invitation_expired` and `invitation_started` never apply together: expiry only gates the
+        start of the test, so an invitation that was started in time is `started` for good, even
+        after its `expiresAt` has passed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TooManyRequests:
+      description: Rate limit exceeded. Retry later.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: Unexpected server error. Details are never included.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorCode:
+      type: string
+      description: Keep in sync with `ErrorCode` in supabase/functions/_shared/http.ts.
+      enum:
+        - validation_error
+        - unauthorized
+        - forbidden
+        - not_found
+        - method_not_allowed
+        - invalid_invitation
+        - invitation_expired
+        - invitation_revoked
+        - invitation_started
+        - conflict
+        - rate_limited
+        - not_implemented
+        - internal_error
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              $ref: "#/components/schemas/ErrorCode"
+            message:
+              type: string
+              description: Human-readable, for logs and developers. Not stable; do not parse.
+    HealthResponse:
+      type: object
+      required: [status, service]
+      properties:
+        status:
+          type: string
+          const: ok
+        service:
+          type: string
+          examples: [admin-api]
+    ProjectStatus:
+      type: string
+      description: |
+        `READY` is confirmed by the brief. `CREATED` and `IN_PROGRESS` are proposed lifecycle states.
+      enum: [CREATED, IN_PROGRESS, READY]
+    RecordingKind:
+      type: string
+      description: Camera = webcam video with microphone audio. Screen = screen, window or tab video.
+      enum: [camera, screen]
+    RecordingContentType:
+      type: string
+      description: Keep in sync with `allowed_mime_types` of the `recordings` bucket in supabase/config.toml.
+      enum: [video/webm, video/mp4]
+    RecordingProgress:
+      type: string
+      enum: [NOT_STARTED, UPLOAD_REQUESTED, VERIFIED]
+    RecordingLimits:
+      type: object
+      required: [maxDurationSeconds, maxSizeBytes, allowedContentTypes]
+      properties:
+        maxDurationSeconds:
+          type: integer
+          const: 120
+        maxSizeBytes:
+          type: integer
+          description: 52428800 (50 MiB) on the Supabase Free plan; may change with the storage tier.
+          examples: [52428800]
+        allowedContentTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecordingContentType"
+    ProjectFieldType:
+      type: string
+      description: |
+        `date` values are ISO `YYYY-MM-DD` strings. `select` values must be one of the definition's `options`.
+      enum: [text, long_text, number, boolean, date, select]
+    ProjectFieldDefinition:
+      type: object
+      required: [key, label, fieldType, required, options, position]
+      properties:
+        key:
+          type: string
+          pattern: "^[a-z][a-z0-9_]*$"
+          description: Stable identifier used as the property name in `fields`. Never changes.
+        label:
+          type: string
+        fieldType:
+          $ref: "#/components/schemas/ProjectFieldType"
+        required:
+          type: boolean
+        options:
+          type: array
+          description: Allowed values for `select`; empty for every other type.
+          items:
+            type: string
+        position:
+          type: integer
+          description: Display order, ascending.
+    ProjectFieldList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectFieldDefinition"
+    ProjectFieldValues:
+      type: object
+      description: |
+        Field values keyed by `ProjectFieldDefinition.key`. Unknown or archived keys, values of the
+        wrong type, missing required fields and invalid `select` options are rejected with
+        `400 validation_error`. An optional field may be omitted or `null`.
+      additionalProperties:
+        type: [string, number, boolean, "null"]
+    Project:
+      type: object
+      required: [id, name, status, fields, createdAt, readyAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+        fields:
+          $ref: "#/components/schemas/ProjectFieldValues"
+        createdAt:
+          type: string
+          format: date-time
+        readyAt:
+          type: [string, "null"]
+          format: date-time
+        activeInvitation:
+          oneOf:
+            - $ref: "#/components/schemas/InvitationSummary"
+            - type: "null"
+    ProjectList:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+        nextCursor:
+          type: [string, "null"]
+    ProjectDetails:
+      allOf:
+        - $ref: "#/components/schemas/Project"
+        - type: object
+          required: [invitations, questionnaireSubmitted, recordings]
+          properties:
+            invitations:
+              type: array
+              items:
+                $ref: "#/components/schemas/InvitationSummary"
+            questionnaireSubmitted:
+              type: boolean
+            recordings:
+              type: object
+              required: [camera, screen]
+              properties:
+                camera:
+                  $ref: "#/components/schemas/RecordingProgress"
+                screen:
+                  $ref: "#/components/schemas/RecordingProgress"
+    CreateProjectRequest:
+      type: object
+      description: |
+        `name` plus optional `fields`, whose shape is described by `listProjectFields`. Any other
+        top-level property is rejected. The link expiry is not part of this request: the "create test"
+        form calls `createInvitation` right after this operation.
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        fields:
+          $ref: "#/components/schemas/ProjectFieldValues"
+    InvitationStatus:
+      type: string
+      description: |
+        Precedence when several apply: `revoked`, `started`, `expired`, `active`. The link may be opened
+        repeatedly while `active`; once the respondent starts the test it is `started` and no longer
+        opens (MVP rule). It stays `started` after `expiresAt`: expiry only gates the start, so this
+        is the same order the respondent API reports (`invitation_revoked`, `invitation_started`,
+        `invitation_expired`).
+      enum: [active, started, expired, revoked]
+    InvitationSummary:
+      type: object
+      description: Never contains the token or its hash.
+      required: [id, status, createdAt, expiresAt, revokedAt, startedAt, lastUsedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/InvitationStatus"
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: [string, "null"]
+          format: date-time
+        startedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the respondent started the test (the link stops opening). `null` until then.
+        lastUsedAt:
+          type: [string, "null"]
+          format: date-time
+    CreateInvitationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expiresInHours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          default: 168
+          description: Lifetime of the invitation in hours (1 hour to 30 days). Defaults to 168 (7 days) when omitted.
+    CreateInvitationResponse:
+      type: object
+      required: [invitation, token]
+      properties:
+        invitation:
+          $ref: "#/components/schemas/InvitationSummary"
+        token:
+          type: string
+          description: Plaintext invitation token. Returned once, never stored, never retrievable again.
+          examples: ["<opaque-invitation-token>"]
+    RespondentProject:
+      type: object
+      description: The only project information a respondent may see. Deliberately minimal.
+      required: [id, name, status, limits, progress]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/ProjectStatus"
+        limits:
+          $ref: "#/components/schemas/RecordingLimits"
+        progress:
+          type: object
+          required: [questionnaireSubmitted, recordings]
+          properties:
+            questionnaireSubmitted:
+              type: boolean
+            recordings:
+              type: object
+              required: [camera, screen]
+              properties:
+                camera:
+                  $ref: "#/components/schemas/RecordingProgress"
+                screen:
+                  $ref: "#/components/schemas/RecordingProgress"
+    QuestionnaireSubmission:
+      type: object
+      description: |
+        PLACEHOLDER. The questionnaire has not been specified, so no fields are invented here. Replace
+        `answers` with a concrete schema once the questionnaire definition exists.
+      required: [answers]
+      additionalProperties: false
+      properties:
+        answers:
+          type: object
+          additionalProperties: true
+    QuestionnaireReceipt:
+      type: object
+      required: [submittedAt]
+      properties:
+        submittedAt:
+          type: string
+          format: date-time
+    CreateUploadUrlRequest:
+      type: object
+      required: [contentType]
+      additionalProperties: false
+      properties:
+        contentType:
+          $ref: "#/components/schemas/RecordingContentType"
+    UploadUrlResponse:
+      type: object
+      required: [bucket, path, token, signedUrl, maxSizeBytes, maxDurationSeconds]
+      properties:
+        bucket:
+          type: string
+          const: recordings
+        path:
+          type: string
+          description: Server-generated object path, project-specific and kind-specific.
+          examples: ["<project-id>/camera/<recording-id>.webm"]
+        token:
+          type: string
+          description: Signed upload token for `uploadToSignedUrl`. Single-path, short-lived. Do not log.
+        signedUrl:
+          type: string
+          format: uri
+          description: Full signed upload URL (contains the token). Do not log.
+        maxSizeBytes:
+          type: integer
+        maxDurationSeconds:
+          type: integer
+          const: 120
+    VerifyRecordingRequest:
+      type: object
+      required: [durationMs]
+      additionalProperties: false
+      properties:
+        durationMs:
+          type: integer
+          minimum: 1
+          maximum: 120000
+          description: Duration measured by the client. Informational; see docs/security.md.
+    VerifyRecordingResponse:
+      type: object
+      required: [kind, status, sizeBytes, contentType]
+      properties:
+        kind:
+          $ref: "#/components/schemas/RecordingKind"
+        status:
+          $ref: "#/components/schemas/RecordingProgress"
+        sizeBytes:
+          type: integer
+        contentType:
+          $ref: "#/components/schemas/RecordingContentType"
+    CompleteProjectResponse:
+      type: object
+      required: [status, readyAt]
+      properties:
+        status:
+          type: string
+          const: READY
+        readyAt:
+          type: string
+          format: date-time

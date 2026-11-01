@@ -1,9 +1,16 @@
+import { useEffect } from "react";
 import { Link, Outlet } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
+import { ADMIN_QUERY_KEY } from "@/lib/admin-api/hooks";
 
 const AdminLayout = () => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Leaving /admin (including signing out) drops cached admin data, so it never outlives the session.
+  useEffect(() => () => queryClient.removeQueries({ queryKey: [ADMIN_QUERY_KEY] }), [queryClient]);
 
   return (
     <div className="min-h-screen bg-background">
