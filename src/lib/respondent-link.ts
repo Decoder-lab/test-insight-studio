@@ -19,3 +19,12 @@ export const INVITATION_PARAM = "invite";
 export function buildInvitationLink(token: string, origin: string = window.location.origin): string {
   return `${origin}${RESPONDENT_PATH}#${INVITATION_PARAM}=${encodeURIComponent(token)}`;
 }
+
+/**
+ * Reads the token back from a URL fragment (`location.hash`), the inverse of `buildInvitationLink`.
+ * Returns null when the fragment carries no (or a blank) `invite` value.
+ */
+export function parseInvitationToken(hash: string): string | null {
+  const token = new URLSearchParams(hash.replace(/^#/, "")).get(INVITATION_PARAM)?.trim();
+  return token || null;
+}

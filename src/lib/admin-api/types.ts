@@ -10,7 +10,9 @@ export type ErrorCode =
   | "invalid_invitation"
   | "invitation_expired"
   | "invitation_revoked"
+  | "invitation_started"
   | "conflict"
+  | "rate_limited"
   | "not_implemented"
   | "internal_error";
 

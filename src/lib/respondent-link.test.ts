@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInvitationLink } from "./respondent-link";
+import { buildInvitationLink, parseInvitationToken } from "./respondent-link";
 
 describe("buildInvitationLink", () => {
   it("puts the token in the URL fragment of the /test page", () => {
@@ -24,5 +24,22 @@ describe("buildInvitationLink", () => {
 
   it("uses the current origin by default", () => {
     expect(buildInvitationLink("tok")).toBe(`${window.location.origin}/test#invite=tok`);
+  });
+});
+
+describe("parseInvitationToken", () => {
+  it.each(["abc_DEF-123", "a+b/c=", "a#b c%d", "a&b=c", "ü?x"])("reads back the token %j from a built link", (token) => {
+    const { hash } = new URL(buildInvitationLink(token, "https://app.example"));
+
+    expect(parseInvitationToken(hash)).toBe(token);
+  });
+
+  it("accepts a fragment with or without the leading #", () => {
+    expect(parseInvitationToken("#invite=tok")).toBe("tok");
+    expect(parseInvitationToken("invite=tok")).toBe("tok");
+  });
+
+  it.each(["", "#", "#invite=", "#invite=%20%20", "#other=tok", "#tok"])("returns null for %j", (hash) => {
+    expect(parseInvitationToken(hash)).toBeNull();
   });
 });

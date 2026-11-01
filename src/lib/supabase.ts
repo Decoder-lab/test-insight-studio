@@ -14,6 +14,8 @@ export interface FunctionRequest {
   /** Function name plus sub-path and query, e.g. `admin-api/projects?limit=25`. */
   path: string;
   body?: unknown;
+  /** Extra request headers, e.g. `X-Invitation-Token` for the respondent API. */
+  headers?: Record<string, string>;
 }
 
 export interface FunctionResponse {
@@ -28,8 +30,8 @@ export interface FunctionResponse {
  * `Authorization: Bearer <access_token>`. Never rejects: HTTP errors and network
  * failures are reported through `status`, so callers decide how to react.
  */
-export async function invokeFunction({ method, path, body }: FunctionRequest): Promise<FunctionResponse> {
-  const { data, error, response } = await supabase.functions.invoke(path, { method, body });
+export async function invokeFunction({ method, path, body, headers }: FunctionRequest): Promise<FunctionResponse> {
+  const { data, error, response } = await supabase.functions.invoke(path, { method, body, headers });
   if (!error) return { status: response?.status ?? 200, body: data };
 
   if (error instanceof FunctionsHttpError || error instanceof FunctionsRelayError) {

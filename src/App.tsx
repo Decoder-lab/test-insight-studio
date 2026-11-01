@@ -7,12 +7,12 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import FullPageSpinner from "@/components/FullPageSpinner";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
-import RespondentPage from "./pages/RespondentPage";
 import ResultsPage from "./pages/ResultsPage";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
 
-// Auth routes are lazy so supabase-js stays out of the public landing bundle.
+// Auth and respondent routes are lazy so supabase-js stays out of the public landing bundle.
+const RespondentPage = lazy(() => import("./pages/RespondentPage"));
 const AuthLayout = lazy(() => import("./components/auth/AuthLayout"));
 const Login = lazy(() => import("./pages/Login"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
@@ -36,7 +36,14 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/test" element={<RespondentPage />} />
+          <Route
+            path="/test"
+            element={
+              <Suspense fallback={<FullPageSpinner />}>
+                <RespondentPage />
+              </Suspense>
+            }
+          />
           {TestDemoPage && (
             <Route
               path="/dev/test-demo"
