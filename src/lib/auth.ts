@@ -48,6 +48,19 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
 }
 
+/** 
+ * Fetches a fresh access token. Resolves to false when there is no session that can be refreshed.
+ * @returns `true` if a fresh access token was obtained, `false` otherwise.
+ */
+export async function refreshSession(): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.auth.refreshSession();
+    return !error && Boolean(data.session);
+  } catch {
+    return false;
+  }
+}
+
 export async function getSession(): Promise<Session | null> {
   const { data } = await supabase.auth.getSession();
   return data.session;

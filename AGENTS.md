@@ -11,9 +11,12 @@
 
 ## Product and Demo Boundaries
 
-- The routes are `/`, `/test`, `/results/:id`, `/privacy-policy`, `/login`, `/auth/callback`, `/logout`, and `/admin/*`; see [README.md](./README.md) for their descriptions and project commands.
-- This is a frontend demo. Results are hard-coded, the recording upload progress is simulated, and survey/recording data is not persisted or sent to a backend.
+- The routes are `/`, `/test`, `/results/:id`, `/privacy-policy`, `/login`, `/auth/callback`, `/logout`, and `/admin/*`, plus the dev-only `/dev/test-demo`; see [README.md](./README.md) for their descriptions and project commands.
+- `/test` is the respondent entry (`/test#invite=<token>`) and is currently a placeholder page. The old demo flow (`src/pages/TestPage.tsx`) is only routed at `/dev/test-demo` in development, for review while its pieces are reused for the respondent flow.
+- The public pages are a frontend demo. Results are hard-coded, the recording upload progress is simulated, and survey/recording data is not persisted or sent to a backend. Only `/admin` talks to a backend.
 - Supabase Auth is used only for the `/admin` area (email and password; sign-up is disabled in Supabase). Only `src/lib/supabase.ts` and `src/lib/auth.ts` import `@supabase/supabase-js`; components use the `useAuth` hook. Auth routes are lazy-loaded so public pages never load Supabase code. Never put a `service_role` key in `VITE_*` variables or the repo.
+- The `/admin` pages call the backend's `admin-api` Edge Function through `src/lib/admin-api/` (typed client over `invokeFunction` in `src/lib/supabase.ts`). The contract is `contracts/openapi.yaml`: do not invent endpoints or fields, and do not edit the contract from here; raise needed changes instead. Branch on `error.code`, never on `error.message`. The backend may not be deployed, so show a "backend not ready" state rather than faking responses; `VITE_ADMIN_API_MOCK` (dev only, `src/lib/admin-api/mock.ts`) is the only sample data.
+- The invitation token is a password: keep it only in component state while its dialog is open, and never write it to storage, logs, a query string or the react-query cache (see `useIssueInvitation`).
 - Keep demo behavior clearly distinguished from real analysis or data handling. Do not describe mock results as participant data.
 - The recording flow uses browser camera, microphone, and screen-capture APIs. Preserve permission handling and stop media tracks during cleanup when changing it.
 

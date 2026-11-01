@@ -7,7 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import FullPageSpinner from "@/components/FullPageSpinner";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
-import TestPage from "./pages/TestPage";
+import RespondentPage from "./pages/RespondentPage";
 import ResultsPage from "./pages/ResultsPage";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
@@ -18,7 +18,13 @@ const Login = lazy(() => import("./pages/Login"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const Logout = lazy(() => import("./pages/Logout"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout"));
-const AdminHome = lazy(() => import("./pages/admin/AdminHome"));
+const ProjectsPage = lazy(() => import("./pages/admin/ProjectsPage"));
+const CreateProjectPage = lazy(() => import("./pages/admin/CreateProjectPage"));
+const ProjectDetailsPage = lazy(() => import("./pages/admin/ProjectDetailsPage"));
+
+// Review-only: the old demo flow, kept until its pieces are reused in the respondent page.
+// `import.meta.env.DEV` is false in production builds, so the chunk is dropped there.
+const TestDemoPage = import.meta.env.DEV ? lazy(() => import("./pages/TestPage")) : null;
 
 const queryClient = new QueryClient();
 
@@ -30,7 +36,17 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/test" element={<TestPage />} />
+          <Route path="/test" element={<RespondentPage />} />
+          {TestDemoPage && (
+            <Route
+              path="/dev/test-demo"
+              element={
+                <Suspense fallback={<FullPageSpinner />}>
+                  <TestDemoPage />
+                </Suspense>
+              }
+            />
+          )}
           <Route path="/results/:id" element={<ResultsPage />} />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
@@ -47,7 +63,9 @@ const App = () => (
             <Route path="/logout" element={<Logout />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/admin" element={<AdminLayout />}>
-                <Route index element={<AdminHome />} />
+                <Route index element={<ProjectsPage />} />
+                <Route path="projects/new" element={<CreateProjectPage />} />
+                <Route path="projects/:projectId" element={<ProjectDetailsPage />} />
                 <Route path="*" element={<NotFound />} />
               </Route>
             </Route>
