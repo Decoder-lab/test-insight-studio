@@ -10,7 +10,7 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 export const supabase = createClient(url || "http://localhost:54321", anonKey || "unconfigured");
 
 export interface FunctionRequest {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT";
   /** Function name plus sub-path and query, e.g. `admin-api/projects?limit=25`. */
   path: string;
   body?: unknown;

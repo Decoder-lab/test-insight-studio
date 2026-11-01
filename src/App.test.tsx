@@ -14,7 +14,7 @@ beforeEach(() => api.validateInvitation.mockReset());
 afterEach(() => window.history.pushState({}, "", "/"));
 
 describe("App routes", () => {
-  it("serves the respondent placeholder at /test, not the old demo", async () => {
+  it("serves the respondent test at /test, not the old demo", async () => {
     api.validateInvitation.mockResolvedValue({
       id: "p1",
       name: "Pilot test",
@@ -24,7 +24,7 @@ describe("App routes", () => {
     });
     renderAt("/test#invite=SECRET-TOKEN");
 
-    expect(await screen.findByText("Placeholder for the test")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Before we begin" })).toBeInTheDocument();
     expect(api.validateInvitation).toHaveBeenCalledWith("SECRET-TOKEN");
     // The token is gone from the address bar (and the history entry) once it has been read.
     expect(window.location.pathname).toBe("/test");

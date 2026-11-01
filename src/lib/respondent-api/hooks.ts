@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { respondentApi } from "./client";
-import type { RespondentProject } from "./types";
+import type { QuestionnaireAnswers, RespondentProject } from "./types";
 
 export type InvitationProjectState =
   | { status: "loading" }
@@ -34,4 +34,31 @@ export function useInvitationProject(token: string | null) {
   const retry = useCallback(() => setAttempt((count) => count + 1), []);
 
   return { ...result, retry };
+}
+
+/**
+ * Submits the questionnaire answers for the invitation held by the caller.
+ *
+ * Like `useInvitationProject` this is deliberately not react-query: a mutation would keep the token
+ * in the mutation cache. `submit` never rejects, so it can be awaited from a form's submit handler;
+ * it reports failure through its return value and `error`, which is cleared by the next attempt.
+ */
+export function useSubmitQuestionnaire(token: string) {
+  const [error, setError] = useState<unknown>(null);
+
+  const submit = useCallback(
+    async (answers: QuestionnaireAnswers): Promise<boolean> => {
+      setError(null);
+      try {
+        await respondentApi.submitQuestionnaire(token, answers);
+        return true;
+      } catch (caught) {
+        setError(caught);
+        return false;
+      }
+    },
+    [token],
+  );
+
+  return { submit, error };
 }

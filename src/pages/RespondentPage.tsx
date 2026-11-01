@@ -1,17 +1,13 @@
 import FullPageSpinner from "@/components/FullPageSpinner";
-import { ProjectStatusBadge, RecordingProgressBadge } from "@/components/admin/StatusBadges";
+import RespondentFlow from "@/components/respondent/RespondentFlow";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useInvitationToken } from "@/hooks/use-invitation-token";
 import { describeRespondentError, isRetryable } from "@/lib/respondent-api/errors";
 import { useInvitationProject } from "@/lib/respondent-api/hooks";
-import type { RespondentProject } from "@/lib/respondent-api/types";
-import { formatBytes } from "@/lib/format";
 
 /**
- * PLACEHOLDER for the respondent entry (`/test#invite=<token>`).
- * It validates the invitation against the backend and shows what the backend returns. The real
- * flow will replace the details card, reusing the steps of the old demo (`TestPage`).
+ * The respondent entry (`/test#invite=<token>`): validates the invitation against the backend and
+ * then runs the test (`RespondentFlow`). Without a valid invitation it explains why it cannot open.
  * The token is a password: it is read from the URL fragment (and removed from the address bar) and
  * passed to the API client, but never rendered, stored or logged.
  */
@@ -25,48 +21,6 @@ const HomeLink = () => (
     Return to Home
   </a>
 );
-
-const Detail = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-    <dt className="text-sm text-muted-foreground">{label}</dt>
-    <dd className="font-medium">{children}</dd>
-  </div>
-);
-
-const ProjectDetails = ({ project }: { project: RespondentProject }) => {
-  const { limits, progress } = project;
-  return (
-    <Screen>
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle>Placeholder for the test</CardTitle>
-          <CardDescription>
-            Some details from the backend. The real test (consent, device check, survey and recordings) will replace
-            this page.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <dl className="space-y-3">
-            <Detail label="Project">{project.name}</Detail>
-            <Detail label="Status">
-              <ProjectStatusBadge status={project.status} />
-            </Detail>
-            <Detail label="Longest recording">{limits.maxDurationSeconds} seconds</Detail>
-            <Detail label="Largest recording file">{formatBytes(limits.maxSizeBytes)}</Detail>
-            <Detail label="Recording formats">{limits.allowedContentTypes.join(", ") || "—"}</Detail>
-            <Detail label="Questionnaire">{progress.questionnaireSubmitted ? "Submitted" : "Not submitted"}</Detail>
-            <Detail label="Camera recording">
-              <RecordingProgressBadge progress={progress.recordings.camera} />
-            </Detail>
-            <Detail label="Screen recording">
-              <RecordingProgressBadge progress={progress.recordings.screen} />
-            </Detail>
-          </dl>
-        </CardContent>
-      </Card>
-    </Screen>
-  );
-};
 
 const RespondentPage = () => {
   const token = useInvitationToken();
@@ -87,7 +41,7 @@ const RespondentPage = () => {
   }
 
   if (state.status === "loading") return <FullPageSpinner />;
-  if (state.status === "ready") return <ProjectDetails project={state.project} />;
+  if (state.status === "ready") return <RespondentFlow token={token} />;
 
   return (
     <Screen>

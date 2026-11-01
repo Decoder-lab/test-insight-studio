@@ -9,6 +9,8 @@ export type RespondentApiErrorKind =
   | "revoked" // 410 invitation_revoked
   | "started" // 410 invitation_started: the test was already started, so the link no longer opens
   | "rate_limited" // 429 rate_limited
+  | "validation" // 400 validation_error: the backend rejected the submitted answers
+  | "conflict" // 409 conflict: the project no longer accepts changes (e.g. already completed)
   | "not_ready" // 501, or the platform answering for a function that is not deployed
   | "network" // no response at all (offline, CORS, DNS)
   | "unexpected"; // anything else, including a malformed success body
@@ -62,6 +64,10 @@ export function describeRespondentError(error: unknown): string {
       return "This test has already been started, so this link can't be opened again. Please contact the research team if you need help.";
     case "rate_limited":
       return "Too many attempts. Please wait a moment and try again.";
+    case "validation":
+      return "Some of your answers could not be accepted. Please check them and try again.";
+    case "conflict":
+      return "This test can no longer be changed. Please contact the research team if you need help.";
     case "not_ready":
       return "The test service isn't available yet. Please try again later.";
     case "network":

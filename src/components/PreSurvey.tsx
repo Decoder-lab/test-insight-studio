@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,25 +8,32 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Loader2 } from "lucide-react";
+import { BUDGET_RANGES } from "@/lib/respondent-api/questionnaire";
+import type { PreSurveyAnswers } from "@/lib/respondent-api/types";
 
 const preSurveySchema = z.object({
   problemToSolve: z.string().trim().min(1, "Required").max(1000),
   buyMotivation: z.string().trim().min(1, "Required").max(1000),
-  budgetRange: z.string().min(1, "Please select a budget range"),
+  budgetRange: z.enum(BUDGET_RANGES, { message: "Please select a budget range" }),
   urgency: z.number().min(1).max(5),
 });
 
-export type PreSurveyAnswers = z.infer<typeof preSurveySchema>;
+// The contract's type, not `z.infer`: without `strictNullChecks` zod infers every field as optional.
+export type { PreSurveyAnswers };
 
 interface PreSurveyProps {
-  onComplete: (data: PreSurveyAnswers) => void;
+  /** May be async: the submit button stays disabled until the returned promise settles. */
+  onComplete: (data: PreSurveyAnswers) => void | Promise<void>;
+  /** Shown above the submit button, e.g. why the last submission failed. */
+  error?: ReactNode;
+  submitLabel?: string;
 }
 
-const PreSurvey = ({ onComplete }: PreSurveyProps) => {
+const PreSurvey = ({ onComplete, error, submitLabel = "Continue to recording" }: PreSurveyProps) => {
   const form = useForm<PreSurveyAnswers>({
     resolver: zodResolver(preSurveySchema),
-    defaultValues: { problemToSolve: "", buyMotivation: "", budgetRange: "", urgency: 3 },
+    defaultValues: { problemToSolve: "", buyMotivation: "", urgency: 3 },
   });
 
   const fields = ["problemToSolve", "buyMotivation", "budgetRange", "urgency"] as const;
@@ -69,15 +77,14 @@ const PreSurvey = ({ onComplete }: PreSurveyProps) => {
         <FormField control={form.control} name="budgetRange" render={({ field }) => (
           <FormItem>
             <FormLabel>What's your budget range?</FormLabel>
-            <Select onValueChange={field.onChange} value={field.value}>
+            <Select onValueChange={field.onChange} value={field.value ?? ""}>
               <FormControl>
                 <SelectTrigger><SelectValue placeholder="Select budget range" /></SelectTrigger>
               </FormControl>
               <SelectContent>
-                <SelectItem value="<€1K">&lt;€1K</SelectItem>
-                <SelectItem value="€1-5K">€1-5K</SelectItem>
-                <SelectItem value="€5-10K">€5-10K</SelectItem>
-                <SelectItem value=">€10K">&gt;€10K</SelectItem>
+                {BUDGET_RANGES.map((range) => (
+                  <SelectItem key={range} value={range}>{range}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <FormMessage />
@@ -97,8 +104,15 @@ const PreSurvey = ({ onComplete }: PreSurveyProps) => {
           </FormItem>
         )} />
 
-        <Button type="submit" className="bg-accent text-accent-foreground rounded-full px-6 gap-2 hover:brightness-95">
-          Continue to recording <ArrowUpRight className="w-4 h-4" />
+        {error}
+
+        <Button
+          type="submit"
+          disabled={form.formState.isSubmitting}
+          className="bg-accent text-accent-foreground rounded-full px-6 gap-2 hover:brightness-95"
+        >
+          {submitLabel}
+          {form.formState.isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpRight className="w-4 h-4" />}
         </Button>
       </form>
     </Form>
