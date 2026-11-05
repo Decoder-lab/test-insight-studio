@@ -12,6 +12,7 @@ export type ErrorCode =
   | "invitation_revoked"
   | "invitation_started"
   | "conflict"
+  | "project_incomplete"
   | "rate_limited"
   | "not_implemented"
   | "internal_error";

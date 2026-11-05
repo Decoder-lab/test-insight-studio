@@ -6,7 +6,14 @@ import { RespondentApiError } from "@/lib/respondent-api/errors";
 import type { RespondentProject } from "@/lib/respondent-api/types";
 import RespondentPage from "./RespondentPage";
 
-const api = vi.hoisted(() => ({ validateInvitation: vi.fn(), submitQuestionnaire: vi.fn() }));
+const api = vi.hoisted(() => ({
+  validateInvitation: vi.fn(),
+  submitQuestionnaire: vi.fn(),
+  createUploadUrl: vi.fn(),
+  uploadRecording: vi.fn(),
+  verifyRecording: vi.fn(),
+  completeProject: vi.fn(),
+}));
 vi.mock("@/lib/respondent-api/client", () => ({ respondentApi: api }));
 
 const answers = vi.hoisted(() => ({
@@ -20,26 +27,45 @@ const answers = vi.hoisted(() => ({
   },
 }));
 
+const recorded = vi.hoisted(() => ({
+  videos: {
+    camera: { kind: "camera", blob: new Blob(["recorded"], { type: "video/webm" }), contentType: "video/webm", durationMs: 4200 },
+  },
+}));
+
 // The real surveys use Radix Select, which cannot be driven with fireEvent in jsdom, and the real
-// recording session needs camera and screen capture. These stubs submit canned data instead.
+// recording session needs a camera. These stubs submit canned data instead; the recording stub hands
+// a canned recording to `onRecorded`, so the upload itself (the real hook, the mocked API) is tested.
 interface StepProps {
   onComplete: (data?: unknown) => void | Promise<void>;
   error?: ReactNode;
+  submitLabel?: string;
+}
+interface RecordingStepProps {
+  limits: { maxDurationSeconds: number };
+  onRecorded: (videos: unknown) => Promise<boolean>;
+  onComplete: () => void;
+  error?: ReactNode;
 }
 vi.mock("@/components/PreSurvey", () => ({
-  default: ({ onComplete, error }: StepProps) => (
+  default: ({ onComplete, error, submitLabel = "Continue to recording" }: StepProps) => (
     <section>
       <h2>Pre-survey step</h2>
+      <output data-testid="pre-survey-label">{submitLabel}</output>
       {error}
       <button onClick={() => void onComplete(answers.pre)}>submit pre-survey</button>
     </section>
   ),
 }));
 vi.mock("@/components/RecordingSession", () => ({
-  default: ({ onComplete }: StepProps) => (
+  default: ({ limits, onRecorded, onComplete, error }: RecordingStepProps) => (
     <section>
       <h2>Recording step</h2>
-      <button onClick={() => void onComplete()}>finish recording</button>
+      <output data-testid="max-duration">{limits.maxDurationSeconds}</output>
+      {error}
+      <button onClick={() => void onRecorded(recorded.videos).then((stored) => stored && onComplete())}>
+        finish recording
+      </button>
     </section>
   ),
 }));
@@ -63,6 +89,8 @@ const project = (over: Partial<RespondentProject> = {}): RespondentProject => ({
   progress: { questionnaireSubmitted: false, recordings: { camera: "NOT_STARTED", screen: "VERIFIED" } },
   ...over,
 });
+
+const UPLOAD_URL = { bucket: "recordings", path: "p1/camera/r1.webm", token: "UPLOAD-TOKEN", signedUrl: "https://x/UPLOAD-TOKEN", maxSizeBytes: 52428800, maxDurationSeconds: 120 };
 
 // Shows the router's current URL, and offers a way to open another link in the same "tab".
 const UrlProbe = () => {
@@ -90,6 +118,10 @@ beforeEach(() => {
   sessionStorage.clear();
   api.validateInvitation.mockResolvedValue(project());
   api.submitQuestionnaire.mockResolvedValue({ submittedAt: "2026-11-01T10:00:00Z" });
+  api.createUploadUrl.mockResolvedValue(UPLOAD_URL);
+  api.uploadRecording.mockResolvedValue(undefined);
+  api.verifyRecording.mockResolvedValue({ kind: "camera", status: "VERIFIED", sizeBytes: 8, contentType: "video/webm" });
+  api.completeProject.mockResolvedValue({ status: "READY", readyAt: "2026-11-01T10:05:00Z" });
 });
 
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
@@ -136,6 +168,7 @@ describe("with a token", () => {
     renderPage();
 
     await preSurvey();
+    expect(screen.getByTestId("pre-survey-label")).toHaveTextContent("Continue to recording");
     expect(screen.getByText("Pre-Survey", { selector: "[aria-current=page]" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
     expect(screen.queryByText("DEMO")).not.toBeInTheDocument();
@@ -205,7 +238,72 @@ describe("the test", () => {
     expect(api.submitQuestionnaire).toHaveBeenCalledWith(TOKEN, { preSurvey: answers.pre });
   });
 
-  it("does not send anything for the recording step", async () => {
+  it("gives the recording step the project's limits", async () => {
+    api.validateInvitation.mockResolvedValue(
+      project({ limits: { maxDurationSeconds: 90, maxSizeBytes: 1000, allowedContentTypes: ["video/webm"] } }),
+    );
+    renderPage();
+    await preSurvey();
+    click("submit pre-survey");
+    await recording();
+
+    expect(screen.getByTestId("max-duration")).toHaveTextContent("90");
+  });
+
+  it("goes straight to the post-survey when the camera recording is already verified, and never uploads again", async () => {
+    api.validateInvitation.mockResolvedValue(
+      project({ progress: { questionnaireSubmitted: false, recordings: { camera: "VERIFIED", screen: "NOT_STARTED" } } }),
+    );
+    renderPage();
+    await preSurvey();
+    expect(screen.getByTestId("pre-survey-label")).toHaveTextContent(/^Continue$/); // not "to recording"
+
+    click("submit pre-survey");
+
+    await postSurvey();
+    expect(screen.queryByRole("heading", { name: "Recording step" })).not.toBeInTheDocument();
+    expect(api.submitQuestionnaire).toHaveBeenCalledWith(TOKEN, { preSurvey: answers.pre });
+    click("submit post-survey");
+    expect(await screen.findByRole("heading", { name: "Thank you!" })).toBeInTheDocument();
+    expect(api.createUploadUrl).not.toHaveBeenCalled();
+    expect(api.completeProject).toHaveBeenCalledOnce();
+  });
+
+  it("does not skip the recording for a recording that was only requested, or for a screen recording alone", async () => {
+    api.validateInvitation.mockResolvedValue(
+      project({ progress: { questionnaireSubmitted: false, recordings: { camera: "UPLOAD_REQUESTED", screen: "VERIFIED" } } }),
+    );
+    renderPage();
+    await preSurvey();
+
+    click("submit pre-survey");
+
+    await recording();
+  });
+
+  it("asks before the page is closed once the recording is done, because the link no longer reopens", async () => {
+    const closes = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    renderPage();
+    await preSurvey();
+    expect(closes()).toBe(false);
+
+    click("submit pre-survey");
+    await recording();
+    click("finish recording");
+    await postSurvey();
+
+    expect(closes()).toBe(true);
+
+    click("submit post-survey");
+    await screen.findByRole("heading", { name: "Thank you!" });
+    expect(closes()).toBe(false);
+  });
+
+  it("uploads the camera recording with the token and verifies it, then moves on without sending a survey", async () => {
     renderPage();
     await preSurvey();
     click("submit pre-survey");
@@ -214,7 +312,52 @@ describe("the test", () => {
     click("finish recording");
 
     await postSurvey();
+    expect(api.createUploadUrl).toHaveBeenCalledWith(TOKEN, "camera", "video/webm");
+    expect(api.uploadRecording).toHaveBeenCalledWith(UPLOAD_URL, recorded.videos.camera.blob, "video/webm");
+    expect(api.verifyRecording).toHaveBeenCalledWith(TOKEN, "camera", 4200);
     expect(api.submitQuestionnaire).toHaveBeenCalledTimes(1);
+    expect(api.completeProject).not.toHaveBeenCalled();
+  });
+
+  it("stays on the recording when the upload fails, and sends the recording again on the second attempt", async () => {
+    api.uploadRecording.mockRejectedValueOnce(new RespondentApiError("upload", 0));
+    renderPage();
+    await preSurvey();
+    click("submit pre-survey");
+    await recording();
+
+    click("finish recording");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The recording could not be uploaded.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Your recording was not sent.");
+    expect(screen.queryByRole("heading", { name: "Post-survey step" })).not.toBeInTheDocument();
+    expect(api.verifyRecording).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toMatch(new RegExp(`${TOKEN}|UPLOAD-TOKEN`));
+
+    click("finish recording");
+
+    await postSurvey();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(api.createUploadUrl).toHaveBeenCalledTimes(2);
+    expect(api.uploadRecording).toHaveBeenCalledTimes(2);
+    expect(api.verifyRecording).toHaveBeenCalledTimes(1);
+  });
+
+  it("only verifies again when the file is already in Storage but the verification failed", async () => {
+    api.verifyRecording.mockRejectedValueOnce(new RespondentApiError("network", 0));
+    renderPage();
+    await preSurvey();
+    click("submit pre-survey");
+    await recording();
+
+    click("finish recording");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    click("finish recording");
+
+    await postSurvey();
+    expect(api.createUploadUrl).toHaveBeenCalledTimes(1);
+    expect(api.uploadRecording).toHaveBeenCalledTimes(1);
+    expect(api.verifyRecording).toHaveBeenCalledTimes(2);
   });
 
   it("sends both surveys with the post-survey, then thanks the respondent", async () => {
@@ -228,6 +371,7 @@ describe("the test", () => {
       preSurvey: answers.pre,
       postSurvey: answers.post,
     });
+    expect(api.completeProject).toHaveBeenCalledExactlyOnceWith(TOKEN);
     expect(screen.queryByRole("heading", { name: "Post-survey step" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Home" })).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -268,6 +412,45 @@ describe("the test", () => {
       preSurvey: answers.pre,
       postSurvey: answers.post,
     });
+  });
+
+  it("stays on the post-survey when the test could not be finished, and then only completes again", async () => {
+    await reachPostSurvey();
+    api.completeProject.mockRejectedValueOnce(new RespondentApiError("conflict", 409));
+
+    click("submit post-survey");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your answers were saved, but the test could not be finished.");
+    expect(screen.queryByRole("heading", { name: "Thank you!" })).not.toBeInTheDocument();
+
+    click("submit post-survey");
+
+    expect(await screen.findByRole("heading", { name: "Thank you!" })).toBeInTheDocument();
+    expect(api.submitQuestionnaire).toHaveBeenCalledTimes(2); // pre-survey, then the post-survey once
+    expect(api.completeProject).toHaveBeenCalledTimes(2);
+  });
+
+  it("tells the respondent when the project cannot be completed yet, without the server's words", async () => {
+    await reachPostSurvey();
+    api.completeProject.mockRejectedValueOnce(new RespondentApiError("incomplete", 409, "project_incomplete"));
+
+    click("submit post-survey");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("has not been received yet");
+    expect(alert).toHaveTextContent("Your answers were saved, but the test could not be finished.");
+    expect(alert).not.toHaveTextContent("can no longer be changed");
+    expect(screen.queryByRole("heading", { name: "Thank you!" })).not.toBeInTheDocument();
+  });
+
+  it("does not complete the project when the post-survey could not be sent", async () => {
+    await reachPostSurvey();
+    api.submitQuestionnaire.mockRejectedValueOnce(new RespondentApiError("validation", 400));
+
+    click("submit post-survey");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your answers were not sent.");
+    expect(api.completeProject).not.toHaveBeenCalled();
   });
 
   it("does not show the server's message or the token when sending fails", async () => {

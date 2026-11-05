@@ -2,10 +2,20 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PreSurvey from "@/components/PreSurvey";
 import RecordingSession from "@/components/RecordingSession";
+import type { RecordingLimits } from "@/lib/respondent-api/types";
 import PostSurvey from "@/components/PostSurvey";
 import TestStepper, { type Step } from "@/components/TestStepper";
 import { motion, AnimatePresence } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
+
+const DEMO_LIMITS: RecordingLimits = {
+  maxDurationSeconds: 120,
+  maxSizeBytes: 50 * 1024 * 1024,
+  allowedContentTypes: ["video/webm", "video/mp4"],
+};
+
+// Demo only: the recording is made in the browser, but nothing is sent anywhere.
+const pretendToUpload = () => new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 1500));
 
 const TestPage = () => {
   const [step, setStep] = useState<Step>("pre-survey");
@@ -36,8 +46,9 @@ const TestPage = () => {
           {step === "recording" && (
             <RecordingSession
               targetURL="https://example.com"
+              limits={DEMO_LIMITS}
+              onRecorded={pretendToUpload}
               onComplete={() => setStep("post-survey")}
-              maxDuration={120}
             />
           )}
           {step === "post-survey" && (

@@ -1,212 +1,115 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Video, MonitorPlay, Circle, Square, AlertCircle, Upload, CheckCircle2 } from "lucide-react";
+import { Video, MonitorPlay, Mic, Circle, Square, AlertCircle, Loader2, CheckCircle2, RotateCcw } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useConfirmBeforeUnload } from "@/hooks/use-confirm-before-unload";
+import { useRecordingSession } from "@/hooks/use-recording-session";
+import { ENABLED_RECORDING_KINDS } from "@/lib/recording/config";
+import type { RecordedVideos, RecordingKind } from "@/lib/recording/types";
+import type { RecordingLimits } from "@/lib/respondent-api/types";
 
-type RecordingPhase = "instructions" | "recording" | "uploading" | "done";
+/** What happens after the recording itself: sending it, and the outcome. */
+type Stage = "idle" | "uploading" | "failed" | "done";
 
 interface RecordingSessionProps {
   targetURL?: string;
-  onComplete: (webcamBlob?: Blob, screenBlob?: Blob, audioBlob?: Blob) => void;
-  maxDuration?: number;
+  limits: RecordingLimits;
+  /** Which recordings to make. The default is `ENABLED_RECORDING_KINDS`; the screen is off there. */
+  kinds?: readonly RecordingKind[];
+  /**
+   * Sends the finished recordings. Resolve `true` once they are stored; `false` keeps them in memory
+   * so the respondent can try again without recording again. Show the reason through `error`.
+   */
+  onRecorded: (videos: RecordedVideos) => Promise<boolean>;
+  /** Called a moment after the recordings were stored. */
+  onComplete: () => void;
+  /** Why the last attempt to send failed. Shown when sending failed. */
+  error?: ReactNode;
 }
+
+const NOTHING_RECORDED = "Nothing was recorded. Please try again.";
+const TOO_LARGE = "Your recording is too large to send. Please record again and keep it shorter.";
+
+const formatTime = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+};
 
 const RecordingSession = ({
   targetURL = "https://example.com",
+  limits,
+  kinds = ENABLED_RECORDING_KINDS,
+  onRecorded,
   onComplete,
-  maxDuration = 120,
+  error,
 }: RecordingSessionProps) => {
-  const [phase, setPhase] = useState<RecordingPhase>("instructions");
-  const [elapsed, setElapsed] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [stage, setStage] = useState<Stage>("idle");
+  /** A problem found before anything was sent; `error` covers the ones found while sending. */
+  const [notice, setNotice] = useState<string | null>(null);
+  // Kept in memory (never stored) so that a failed upload can be retried without recording again.
+  const videosRef = useRef<RecordedVideos | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const webcamStreamRef = useRef<MediaStream | null>(null);
-  const screenStreamRef = useRef<MediaStream | null>(null);
-  const webcamRecorderRef = useRef<MediaRecorder | null>(null);
-  const screenRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioRecorderRef = useRef<MediaRecorder | null>(null);
-  const webcamChunks = useRef<Blob[]>([]);
-  const screenChunks = useRef<Blob[]>([]);
-  const audioChunks = useRef<Blob[]>([]);
-  const webcamVideoRef = useRef<HTMLVideoElement>(null);
-  const elapsedRef = useRef(0);
+  const maxDuration = limits.maxDurationSeconds;
+  const includesScreen = kinds.includes("screen");
 
-  const remaining = maxDuration - elapsed;
-  const progressPercent = (elapsed / maxDuration) * 100;
+  const send = useCallback(async () => {
+    if (!videosRef.current) return;
+    setStage("uploading");
+    setStage((await onRecorded(videosRef.current)) ? "done" : "failed");
+  }, [onRecorded]);
 
-  // Warn on close during recording
+  const handleFinished = useCallback(
+    (videos: RecordedVideos) => {
+      const recorded = Object.values(videos);
+      if (!videos.camera) {
+        setNotice(NOTHING_RECORDED);
+        return;
+      }
+      if (recorded.some((video) => video.blob.size > limits.maxSizeBytes)) {
+        videosRef.current = null;
+        setNotice(TOO_LARGE);
+        setStage("failed");
+        return;
+      }
+      setNotice(null);
+      videosRef.current = videos;
+      void send();
+    },
+    [limits.maxSizeBytes, send],
+  );
+
+  const recorder = useRecordingSession({ kinds, limits, onFinished: handleFinished });
+  const recording = recorder.status === "recording";
+
+  const phase = recording ? "recording" : stage === "idle" ? "instructions" : stage;
+  const remaining = Math.max(0, maxDuration - recorder.elapsed);
+  const progressPercent = (recorder.elapsed / maxDuration) * 100;
+
+  // Leaving now would lose the recording (and, once it is uploading, the link no longer reopens).
+  useConfirmBeforeUnload(phase !== "instructions");
+
   useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (phase === "recording") {
-        e.preventDefault();
-        e.returnValue = "";
-      }
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [phase]);
+    if (stage !== "done") return;
+    const timer = setTimeout(() => onCompleteRef.current(), 1200);
+    return () => clearTimeout(timer);
+  }, [stage]);
 
-  const cleanup = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    webcamStreamRef.current?.getTracks().forEach((t) => t.stop());
-    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-  }, []);
-
-  useEffect(() => () => cleanup(), [cleanup]);
-
-  const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  const recordAgain = () => {
+    videosRef.current = null;
+    setNotice(null);
+    setStage("idle");
   };
 
-  const createRecorder = (stream: MediaStream, chunks: React.MutableRefObject<Blob[]>) => {
-    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-      ? "video/webm;codecs=vp9"
-      : "video/webm";
-    const recorder = new MediaRecorder(stream, { mimeType });
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.current.push(e.data);
-    };
-    return recorder;
-  };
-
-  const startRecording = async () => {
-    setError(null);
-    try {
-      // Request webcam + audio
-      const webcamStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 640, height: 480 },
-        audio: true,
-      });
-      webcamStreamRef.current = webcamStream;
-
-      // Show webcam preview
-      if (webcamVideoRef.current) {
-        webcamVideoRef.current.srcObject = webcamStream;
-      }
-
-      // Request screen capture
-      let screenStream: MediaStream;
-      try {
-        screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: { displaySurface: "browser" } as any,
-          audio: false,
-        });
-      } catch {
-        // User cancelled screen share — still allow webcam-only
-        screenStream = new MediaStream();
-      }
-      screenStreamRef.current = screenStream;
-
-      // Create recorders
-      webcamChunks.current = [];
-      screenChunks.current = [];
-      audioChunks.current = [];
-
-      // Webcam recorder (video only)
-      const webcamVideoTrack = webcamStream.getVideoTracks()[0];
-      if (webcamVideoTrack) {
-        const wcStream = new MediaStream([webcamVideoTrack]);
-        webcamRecorderRef.current = createRecorder(wcStream, webcamChunks);
-        webcamRecorderRef.current.start(1000);
-      }
-
-      // Screen recorder
-      if (screenStream.getVideoTracks().length > 0) {
-        screenRecorderRef.current = createRecorder(screenStream, screenChunks);
-        screenRecorderRef.current.start(1000);
-
-        // Stop recording if user ends screen share
-        screenStream.getVideoTracks()[0].onended = () => {
-          stopRecording();
-        };
-      }
-
-      // Audio recorder
-      const audioTrack = webcamStream.getAudioTracks()[0];
-      if (audioTrack) {
-        const audioStream = new MediaStream([audioTrack]);
-        const audioMime = MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "audio/ogg";
-        const audioRec = new MediaRecorder(audioStream, { mimeType: audioMime });
-        audioRec.ondataavailable = (e) => {
-          if (e.data.size > 0) audioChunks.current.push(e.data);
-        };
-        audioRecorderRef.current = audioRec;
-        audioRec.start(1000);
-      }
-
-      setPhase("recording");
-      setElapsed(0);
-      elapsedRef.current = 0;
-
-      timerRef.current = setInterval(() => {
-        elapsedRef.current += 1;
-        setElapsed(elapsedRef.current);
-        if (elapsedRef.current >= maxDuration) {
-          stopRecording();
-        }
-      }, 1000);
-    } catch (err: any) {
-      console.error("Recording error:", err);
-      if (err.name === "NotAllowedError") {
-        setError("Camera/microphone permission denied. Please allow access and try again.");
-      } else if (err.name === "NotFoundError") {
-        setError("No camera or microphone found. Please connect a device and try again.");
-      } else {
-        setError(`Could not start recording: ${err.message}`);
-      }
-    }
-  };
-
-  const stopRecording = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-
-    const stop = (rec: MediaRecorder | null) => {
-      if (rec && rec.state !== "inactive") rec.stop();
-    };
-
-    stop(webcamRecorderRef.current);
-    stop(screenRecorderRef.current);
-    stop(audioRecorderRef.current);
-
-    // Give recorders time to flush
-    setTimeout(() => {
-      webcamStreamRef.current?.getTracks().forEach((t) => t.stop());
-      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
-
-      const webcamBlob = webcamChunks.current.length
-        ? new Blob(webcamChunks.current, { type: "video/webm" })
-        : undefined;
-      const screenBlob = screenChunks.current.length
-        ? new Blob(screenChunks.current, { type: "video/webm" })
-        : undefined;
-      const audioBlob = audioChunks.current.length
-        ? new Blob(audioChunks.current, { type: "audio/webm" })
-        : undefined;
-
-      // Simulate upload progress
-      setPhase("uploading");
-      let prog = 0;
-      const uploadInterval = setInterval(() => {
-        prog += Math.random() * 15 + 5;
-        if (prog >= 100) {
-          prog = 100;
-          clearInterval(uploadInterval);
-          setUploadProgress(100);
-          setPhase("done");
-          setTimeout(() => onComplete(webcamBlob, screenBlob, audioBlob), 1200);
-        }
-        setUploadProgress(Math.min(prog, 100));
-      }, 300);
-    }, 500);
-  }, [onComplete]);
+  const cards = [
+    { icon: Video, label: "Camera", desc: "We'll record your face" },
+    { icon: Mic, label: "Microphone", desc: "Speak your thoughts aloud" },
+    ...(includesScreen ? [{ icon: MonitorPlay, label: "Screen", desc: "We'll capture your screen" }] : []),
+  ];
 
   return (
     <div className="max-w-4xl mx-auto text-center">
@@ -226,20 +129,17 @@ const RecordingSession = ({
 
             <h2 className="font-display text-3xl font-bold mb-2">Ready to record?</h2>
             <p className="text-muted-foreground text-sm mb-8 max-w-md mx-auto">
-              You'll browse the target page for up to {Math.floor(maxDuration / 60)} minutes while we
-              capture your screen, camera, and voice.
+              You'll browse the target page for up to {Math.floor(maxDuration / 60)} minutes while we record your{" "}
+              {includesScreen ? "screen, camera, and voice" : "camera and voice"}.
+              {!includesScreen && " Your screen is not recorded."}
             </p>
 
-            <div className="grid sm:grid-cols-3 gap-4 mb-10 text-left max-w-lg mx-auto">
-              {[
-                { icon: Video, label: "Webcam", desc: "We'll record your face" },
-                { icon: MonitorPlay, label: "Screen", desc: "We'll capture your screen" },
-                {
-                  icon: Circle,
-                  label: "Audio",
-                  desc: "Speak your thoughts aloud",
-                },
-              ].map(({ icon: Icon, label, desc }) => (
+            <div
+              className={`grid gap-4 mb-10 text-left mx-auto ${
+                cards.length > 2 ? "sm:grid-cols-3 max-w-lg" : "sm:grid-cols-2 max-w-sm"
+              }`}
+            >
+              {cards.map(({ icon: Icon, label, desc }) => (
                 <div
                   key={label}
                   className="rounded-xl border border-border bg-card p-4 flex flex-col items-center text-center gap-2"
@@ -251,15 +151,16 @@ const RecordingSession = ({
               ))}
             </div>
 
-            {error && (
+            {(recorder.error ?? notice) && (
               <Alert variant="destructive" className="mb-6 max-w-md mx-auto text-left">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>{recorder.error ?? notice}</AlertDescription>
               </Alert>
             )}
 
             <Button
-              onClick={startRecording}
+              onClick={recorder.start}
+              disabled={recorder.status === "starting"}
               className="bg-accent text-accent-foreground rounded-full px-8 gap-2 hover:brightness-95"
               size="lg"
             >
@@ -282,9 +183,7 @@ const RecordingSession = ({
                 <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
                 <span className="text-sm font-mono font-medium text-destructive">REC</span>
               </div>
-              <span className="text-sm font-mono text-muted-foreground">
-                {formatTime(remaining)} remaining
-              </span>
+              <span className="text-sm font-mono text-muted-foreground">{formatTime(remaining)} remaining</span>
             </div>
             <Progress value={progressPercent} className="h-1.5 mb-6 max-w-2xl mx-auto" />
 
@@ -301,7 +200,7 @@ const RecordingSession = ({
               {/* Webcam PiP */}
               <div className="absolute bottom-3 right-3 w-32 aspect-video rounded-lg overflow-hidden border-2 border-accent shadow-lg bg-surface-dark">
                 <video
-                  ref={webcamVideoRef}
+                  ref={recorder.previewRef}
                   autoPlay
                   muted
                   playsInline
@@ -311,12 +210,7 @@ const RecordingSession = ({
               </div>
             </div>
 
-            <Button
-              onClick={stopRecording}
-              variant="destructive"
-              className="rounded-full px-8 gap-2"
-              size="lg"
-            >
+            <Button onClick={recorder.stop} variant="destructive" className="rounded-full px-8 gap-2" size="lg">
               <Square className="w-4 h-4" /> Stop & Submit
             </Button>
           </motion.div>
@@ -330,13 +224,41 @@ const RecordingSession = ({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0 }}
             className="flex flex-col items-center gap-4 py-12"
+            role="status"
           >
-            <Upload className="w-10 h-10 text-accent animate-bounce" />
-            <h3 className="font-display text-xl font-semibold">Uploading recordings…</h3>
-            <Progress value={uploadProgress} className="h-2 w-64" />
-            <span className="text-sm text-muted-foreground font-mono">
-              {Math.round(uploadProgress)}%
-            </span>
+            <Loader2 className="w-10 h-10 text-accent animate-spin" />
+            <h3 className="font-display text-xl font-semibold">Uploading your recording…</h3>
+            <p className="text-sm text-muted-foreground">Please keep this page open until it finishes.</p>
+          </motion.div>
+        )}
+
+        {/* ─── FAILED PHASE ─── */}
+        {phase === "failed" && (
+          <motion.div
+            key="failed"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col items-center gap-4 py-12"
+          >
+            {notice ? (
+              <Alert variant="destructive" className="max-w-md text-left">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{notice}</AlertDescription>
+              </Alert>
+            ) : (
+              error
+            )}
+            <div className="flex flex-wrap justify-center gap-3">
+              {videosRef.current && (
+                <Button onClick={() => void send()} className="rounded-full px-8 gap-2" size="lg">
+                  <RotateCcw className="w-4 h-4" /> Try again
+                </Button>
+              )}
+              <Button onClick={recordAgain} variant="outline" className="rounded-full px-8 gap-2" size="lg">
+                <Circle className="w-4 h-4" /> Record again
+              </Button>
+            </div>
           </motion.div>
         )}
 

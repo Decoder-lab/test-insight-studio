@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const lib = vi.hoisted(() => ({ invokeFunction: vi.fn() }));
-vi.mock("@/lib/supabase", () => ({ invokeFunction: lib.invokeFunction }));
+const lib = vi.hoisted(() => ({ invokeFunction: vi.fn(), uploadToSignedUrl: vi.fn() }));
+vi.mock("@/lib/supabase", () => ({ invokeFunction: lib.invokeFunction, uploadToSignedUrl: lib.uploadToSignedUrl }));
 
 import { respondentApi } from "./client";
 import { RespondentApiError, describeRespondentError, isRetryable } from "./errors";
-import type { QuestionnaireAnswers } from "./types";
+import type { QuestionnaireAnswers, UploadUrl } from "./types";
 
 const TOKEN = "SECRET-TOKEN";
 
@@ -115,6 +115,167 @@ describe("submitQuestionnaire", () => {
   });
 });
 
+const UPLOAD_URL: UploadUrl = {
+  bucket: "recordings",
+  path: "p1/camera/r1.webm",
+  token: "UPLOAD-TOKEN",
+  signedUrl: "https://storage.example/upload/sign/recordings/p1/camera/r1.webm?token=UPLOAD-TOKEN",
+  maxSizeBytes: 52428800,
+  maxDurationSeconds: 120,
+};
+
+describe("createUploadUrl", () => {
+  it("posts the bare content type to the kind's path with the token in the header only", async () => {
+    respond(200, UPLOAD_URL);
+
+    await expect(respondentApi.createUploadUrl(TOKEN, "camera", "video/webm")).resolves.toEqual(UPLOAD_URL);
+
+    expect(lib.invokeFunction).toHaveBeenCalledWith({
+      method: "POST",
+      path: "respondent-api/recordings/camera/upload-url",
+      headers: { "X-Invitation-Token": TOKEN },
+      body: { contentType: "video/webm" },
+    });
+  });
+
+  it("uses the path of the kind it is asked for", async () => {
+    respond(200, UPLOAD_URL);
+
+    await respondentApi.createUploadUrl(TOKEN, "screen", "video/mp4");
+
+    expect(lib.invokeFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ path: "respondent-api/recordings/screen/upload-url", body: { contentType: "video/mp4" } }),
+    );
+  });
+
+  it.each([null, {}, { ...UPLOAD_URL, token: undefined }, { ...UPLOAD_URL, maxSizeBytes: "50" }])(
+    "treats the success body %j as unexpected",
+    async (body) => {
+      respond(200, body);
+
+      expect((await failure(() => respondentApi.createUploadUrl(TOKEN, "camera", "video/webm"))).kind).toBe("unexpected");
+    },
+  );
+
+  it.each([
+    [409, envelope("conflict"), "conflict"],
+    [400, envelope("validation_error"), "validation"],
+    [429, envelope("rate_limited"), "rate_limited"],
+    [501, envelope("not_implemented"), "not_ready"],
+    [410, envelope("invitation_revoked"), "revoked"],
+  ])("maps status %d with %j to %s", async (status, body, kind) => {
+    respond(status, body);
+
+    expect((await failure(() => respondentApi.createUploadUrl(TOKEN, "camera", "video/webm"))).kind).toBe(kind);
+  });
+});
+
+describe("uploadRecording", () => {
+  const blob = new Blob(["video"], { type: "video/webm" });
+
+  it("sends the file to Storage with the signed token and the bare content type", async () => {
+    lib.uploadToSignedUrl.mockResolvedValueOnce({ ok: true, status: 200 });
+
+    await respondentApi.uploadRecording(UPLOAD_URL, blob, "video/webm");
+
+    expect(lib.uploadToSignedUrl).toHaveBeenCalledWith({
+      bucket: "recordings",
+      path: "p1/camera/r1.webm",
+      token: "UPLOAD-TOKEN",
+      blob,
+      contentType: "video/webm",
+    });
+    expect(lib.invokeFunction).not.toHaveBeenCalled();
+  });
+
+  it.each([0, 413, 415, 500])("reports a Storage failure (status %d) as an upload error, without the upload token", async (status) => {
+    lib.uploadToSignedUrl.mockResolvedValueOnce({ ok: false, status });
+
+    const error = await failure(() => respondentApi.uploadRecording(UPLOAD_URL, blob, "video/webm"));
+
+    expect(error.kind).toBe("upload");
+    expect(error.status).toBe(status);
+    expect(`${error.message} ${describeRespondentError(error)}`).not.toContain("UPLOAD-TOKEN");
+  });
+});
+
+describe("verifyRecording", () => {
+  const VERIFIED = { kind: "camera", status: "VERIFIED", sizeBytes: 1234, contentType: "video/webm" };
+
+  it("posts the client's duration to the kind's path with the token in the header only", async () => {
+    respond(200, VERIFIED);
+
+    await expect(respondentApi.verifyRecording(TOKEN, "camera", 4200)).resolves.toEqual(VERIFIED);
+
+    expect(lib.invokeFunction).toHaveBeenCalledWith({
+      method: "POST",
+      path: "respondent-api/recordings/camera/verify",
+      headers: { "X-Invitation-Token": TOKEN },
+      body: { durationMs: 4200 },
+    });
+  });
+
+  it.each([null, {}, { ...VERIFIED, sizeBytes: "1234" }])("treats the success body %j as unexpected", async (body) => {
+    respond(200, body);
+
+    expect((await failure(() => respondentApi.verifyRecording(TOKEN, "camera", 1))).kind).toBe("unexpected");
+  });
+
+  it.each([
+    [400, envelope("validation_error"), "validation"],
+    [404, envelope("not_found"), "unexpected"],
+    [409, envelope("conflict"), "conflict"],
+    [429, envelope("rate_limited"), "rate_limited"],
+  ])("maps status %d with %j to %s", async (status, body, kind) => {
+    respond(status, body);
+
+    expect((await failure(() => respondentApi.verifyRecording(TOKEN, "camera", 1))).kind).toBe(kind);
+  });
+});
+
+describe("completeProject", () => {
+  it("posts to /complete with the token in the header only", async () => {
+    respond(200, { status: "READY", readyAt: "2026-11-01T10:05:00Z" });
+
+    await expect(respondentApi.completeProject(TOKEN)).resolves.toEqual({ status: "READY", readyAt: "2026-11-01T10:05:00Z" });
+
+    expect(lib.invokeFunction).toHaveBeenCalledWith({
+      method: "POST",
+      path: "respondent-api/complete",
+      headers: { "X-Invitation-Token": TOKEN },
+    });
+  });
+
+  it.each([null, {}, { status: "IN_PROGRESS", readyAt: "2026-11-01T10:05:00Z" }, { status: "READY" }])(
+    "treats the success body %j as unexpected",
+    async (body) => {
+      respond(200, body);
+
+      expect((await failure(() => respondentApi.completeProject(TOKEN))).kind).toBe("unexpected");
+    },
+  );
+
+  it.each([
+    [409, envelope("project_incomplete"), "incomplete"],
+    [409, envelope("conflict"), "conflict"],
+    [501, envelope("not_implemented"), "not_ready"],
+    [0, null, "network"],
+  ])("maps status %d with %j to %s", async (status, body, kind) => {
+    respond(status, body);
+
+    expect((await failure(() => respondentApi.completeProject(TOKEN))).kind).toBe(kind);
+  });
+
+  it("explains an incomplete project without calling it a conflict or showing the server's message", async () => {
+    respond(409, envelope("project_incomplete", "camera recording is not VERIFIED"));
+
+    const text = describeRespondentError(await failure(() => respondentApi.completeProject(TOKEN)));
+
+    expect(text).toContain("has not been received yet");
+    expect(text).not.toMatch(/can no longer be changed|camera|VERIFIED/);
+  });
+});
+
 describe("errors", () => {
   it.each([
     [401, envelope("invalid_invitation"), "invalid"],
@@ -182,6 +343,7 @@ describe("describeRespondentError", () => {
     expect(isRetryable(new RespondentApiError("network", 0))).toBe(true);
     expect(isRetryable(new RespondentApiError("rate_limited", 429))).toBe(true);
     expect(isRetryable(new RespondentApiError("unexpected", 500))).toBe(true);
+    expect(isRetryable(new RespondentApiError("upload", 0))).toBe(true);
     expect(isRetryable(new RespondentApiError("invalid", 401))).toBe(false);
     expect(isRetryable(new RespondentApiError("expired", 410))).toBe(false);
     expect(isRetryable(new RespondentApiError("revoked", 410))).toBe(false);
@@ -189,5 +351,6 @@ describe("describeRespondentError", () => {
     expect(isRetryable(new RespondentApiError("not_ready", 501))).toBe(false);
     expect(isRetryable(new RespondentApiError("validation", 400))).toBe(false);
     expect(isRetryable(new RespondentApiError("conflict", 409))).toBe(false);
+    expect(isRetryable(new RespondentApiError("incomplete", 409))).toBe(false);
   });
 });
