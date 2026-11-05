@@ -41,7 +41,7 @@ const RespondentPage = () => {
   }
 
   if (state.status === "loading") return <FullPageSpinner />;
-  if (state.status === "ready") return <RespondentFlow token={token} />;
+  if (state.status === "ready") return <RespondentFlow token={token} project={state.project} />;
 
   return (
     <Screen>

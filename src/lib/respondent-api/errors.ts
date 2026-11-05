@@ -11,6 +11,8 @@ export type RespondentApiErrorKind =
   | "rate_limited" // 429 rate_limited
   | "validation" // 400 validation_error: the backend rejected the submitted answers
   | "conflict" // 409 conflict: the project no longer accepts changes (e.g. already completed)
+  | "upload" // Storage did not accept the recording (or did not answer)
+  | "incomplete" // 409 project_incomplete: the questionnaire or a required recording has not arrived
   | "not_ready" // 501, or the platform answering for a function that is not deployed
   | "network" // no response at all (offline, CORS, DNS)
   | "unexpected"; // anything else, including a malformed success body
@@ -43,7 +45,7 @@ export const isRespondentApiError = (error: unknown): error is RespondentApiErro
 
 /** Whether trying again can help, as opposed to a link that will never open. */
 export const isRetryable = (error: unknown): boolean =>
-  !isRespondentApiError(error) || ["rate_limited", "network", "unexpected"].includes(error.kind);
+  !isRespondentApiError(error) || ["rate_limited", "network", "unexpected", "upload"].includes(error.kind);
 
 /**
  * Short, respondent-facing text for an error. The server's message is never shown.
@@ -65,9 +67,13 @@ export function describeRespondentError(error: unknown): string {
     case "rate_limited":
       return "Too many attempts. Please wait a moment and try again.";
     case "validation":
-      return "Some of your answers could not be accepted. Please check them and try again.";
+      return "Something you sent could not be accepted. Please check it and try again.";
     case "conflict":
       return "This test can no longer be changed. Please contact the research team if you need help.";
+    case "incomplete":
+      return "A part of the test has not been received yet, so it can't be finished. Please contact the research team if you need help.";
+    case "upload":
+      return "The recording could not be uploaded. Please check your connection and try again.";
     case "not_ready":
       return "The test service isn't available yet. Please try again later.";
     case "network":

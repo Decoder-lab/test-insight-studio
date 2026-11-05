@@ -9,6 +9,36 @@ export const isSupabaseConfigured = Boolean(url && anonKey);
 // importing this module never breaks the app; callers check isSupabaseConfigured.
 export const supabase = createClient(url || "http://localhost:54321", anonKey || "unconfigured");
 
+export interface SignedUpload {
+  bucket: string;
+  path: string;
+  /** Signed upload token from the backend. A secret: never log it. */
+  token: string;
+  /** Its type must be the bare MIME type: supabase-js sends a Blob as multipart with the Blob's own type. */
+  blob: Blob;
+  contentType: string;
+}
+
+export interface UploadResult {
+  ok: boolean;
+  /** HTTP status of Storage's answer, or 0 when there was none (offline, CORS, DNS). */
+  status: number;
+}
+
+/**
+ * Uploads a file to Storage with a signed upload token (no session needed). Never rejects: a
+ * failure is reported through `ok` and `status`.
+ */
+export async function uploadToSignedUrl({ bucket, path, token, blob, contentType }: SignedUpload): Promise<UploadResult> {
+  try {
+    const { error } = await supabase.storage.from(bucket).uploadToSignedUrl(path, token, blob, { contentType });
+    if (!error) return { ok: true, status: 200 };
+    return { ok: false, status: "status" in error && typeof error.status === "number" ? error.status : 0 };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
 export interface FunctionRequest {
   method: "GET" | "POST" | "PUT";
   /** Function name plus sub-path and query, e.g. `admin-api/projects?limit=25`. */

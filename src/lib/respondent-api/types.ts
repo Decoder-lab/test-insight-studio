@@ -8,6 +8,9 @@ export type { ErrorCode, ProjectStatus, RecordingProgress };
 
 export type RecordingContentType = "video/webm" | "video/mp4";
 
+/** Camera = webcam video with microphone audio. Screen = screen, window or tab video. */
+export type RecordingKind = "camera" | "screen";
+
 export interface RecordingLimits {
   /** Fixed at 120 by the contract. */
   maxDurationSeconds: number;
@@ -50,6 +53,33 @@ export interface QuestionnaireAnswers {
 export interface QuestionnaireReceipt {
   /** ISO 8601 date-time. */
   submittedAt: string;
+}
+
+/**
+ * Permission to upload one recording to Storage. `token` and `signedUrl` are secrets: use them for
+ * the upload and drop them; never log or store them.
+ */
+export interface UploadUrl {
+  bucket: string;
+  /** Server-generated object path, specific to the invited project and the recording kind. */
+  path: string;
+  token: string;
+  signedUrl: string;
+  maxSizeBytes: number;
+  maxDurationSeconds: number;
+}
+
+export interface VerifiedRecording {
+  kind: RecordingKind;
+  status: RecordingProgress;
+  sizeBytes: number;
+  contentType: RecordingContentType;
+}
+
+export interface CompletedProject {
+  status: "READY";
+  /** ISO 8601 date-time. */
+  readyAt: string;
 }
 
 /** The only project information a respondent may see. Deliberately minimal. */
