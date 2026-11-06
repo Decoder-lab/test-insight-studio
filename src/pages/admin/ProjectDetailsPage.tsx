@@ -4,6 +4,8 @@ import { ArrowLeft, Info, Loader2 } from "lucide-react";
 import ApiErrorState from "@/components/admin/ApiErrorState";
 import InvitationLinkDialog from "@/components/admin/InvitationLinkDialog";
 import IssueLinkDialog from "@/components/admin/IssueLinkDialog";
+import QuestionnaireCard from "@/components/admin/QuestionnaireCard";
+import RecordingsCard from "@/components/admin/RecordingsCard";
 import { InvitationStatusBadge, ProjectStatusBadge, RecordingProgressBadge } from "@/components/admin/StatusBadges";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -206,6 +208,10 @@ const ProjectDetailsPage = () => {
           </DetailList>
         </CardContent>
       </Card>
+
+      <RecordingsCard projectId={projectId} recordings={data.recordings} />
+
+      <QuestionnaireCard projectId={projectId} enabled={data.status !== "CREATED"} />
 
       <Card>
         <CardHeader className="flex flex-col gap-4 space-y-0 sm:flex-row sm:items-start sm:justify-between">

@@ -3,7 +3,14 @@ import { render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router-dom";
 import type { ReactElement } from "react";
-import type { InvitationSummary, Project, ProjectDetails, ProjectFieldDefinition } from "@/lib/admin-api/types";
+import type {
+  InvitationSummary,
+  Project,
+  ProjectDetails,
+  ProjectFieldDefinition,
+  QuestionnaireResponseDetails,
+  RecordingPlayback,
+} from "@/lib/admin-api/types";
 
 export const field = (
   over: Partial<ProjectFieldDefinition> & Pick<ProjectFieldDefinition, "key" | "fieldType">,
@@ -36,6 +43,35 @@ export const projectDetails = (over: Partial<ProjectDetails> = {}): ProjectDetai
   invitations: [],
   questionnaireSubmitted: false,
   recordings: { camera: "NOT_STARTED", screen: "NOT_STARTED" },
+  ...over,
+});
+
+export const questionnaireResponse = (over: Partial<QuestionnaireResponseDetails> = {}): QuestionnaireResponseDetails => ({
+  answers: {
+    preSurvey: {
+      problemToSolve: "Interview notes get lost",
+      buyMotivation: "One searchable place",
+      budgetRange: "€1-5K",
+      urgency: 4,
+    },
+    postSurvey: {
+      disappointed: "Very disappointed",
+      wouldBuy: "Maybe",
+      mostConfusing: "Where to start",
+      likedMost: "The summary view",
+      whatsMissing: "Export to other tools",
+    },
+  },
+  submittedAt: "2026-11-03T10:00:00.000Z",
+  ...over,
+});
+
+export const playback = (over: Partial<RecordingPlayback> = {}): RecordingPlayback => ({
+  url: "https://storage.example/object/sign/recordings/p1/camera/r1.webm?token=READ-TOKEN",
+  expiresAt: "2026-11-03T10:15:00.000Z",
+  contentType: "video/webm",
+  sizeBytes: 1572864,
+  durationMs: 65000,
   ...over,
 });
 

@@ -61,6 +61,34 @@ describe("requests", () => {
     ]);
   });
 
+  it("reads the answers and the playback URL on the contract's paths", async () => {
+    respond(200, { answers: { preSurvey: {} }, submittedAt: "2026-11-03T10:00:00.000Z" });
+    respond(200, { url: "https://storage.example/signed", expiresAt: "2026-11-03T10:15:00.000Z" });
+
+    await adminApi.getQuestionnaireResponse("p 1");
+    await adminApi.getRecordingPlayback("p 1", "camera");
+
+    expect(lib.invokeFunction.mock.calls.map(([request]) => request)).toEqual([
+      { method: "GET", path: "admin-api/projects/p%201/questionnaire-response" },
+      { method: "GET", path: "admin-api/projects/p%201/recordings/camera/playback-url" },
+    ]);
+  });
+
+  it("rejects an answers or playback body that does not have the expected shape", async () => {
+    respond(200, { answers: {}, submittedAt: "2026-11-03T10:00:00.000Z" });
+    respond(200, { url: 7 });
+
+    expect((await failure(() => adminApi.getQuestionnaireResponse("p1"))).kind).toBe("unexpected");
+    expect((await failure(() => adminApi.getRecordingPlayback("p1", "screen"))).kind).toBe("unexpected");
+  });
+
+  it("maps not_found for a project without answers or a recording to an envelope error", async () => {
+    respond(404, envelope("not_found"));
+    const error = await failure(() => adminApi.getQuestionnaireResponse("p1"));
+    expect(error.kind).toBe("api");
+    expect(error.code).toBe("not_found");
+  });
+
   it("returns the parsed body, including the one-time token", async () => {
     respond(201, { invitation: { id: "i1" }, token: "tok" });
     await expect(adminApi.createInvitation("p1")).resolves.toEqual({ invitation: { id: "i1" }, token: "tok" });

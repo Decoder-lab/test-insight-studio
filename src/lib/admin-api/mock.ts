@@ -17,6 +17,8 @@ import type {
   ProjectFieldDefinition,
   ProjectFieldValues,
   ProjectStatus,
+  QuestionnaireAnswers,
+  RecordingKind,
   RecordingProgress,
 } from "./types";
 
@@ -62,7 +64,9 @@ interface StoredProject {
   readyAt: number | null;
   invitations: StoredInvitation[];
   questionnaireSubmitted: boolean;
-  recordings: { camera: RecordingProgress; screen: RecordingProgress };
+  /** Stored answers, `null` until something was submitted. */
+  answers: QuestionnaireAnswers | null;
+  recordings: Record<RecordingKind, RecordingProgress>;
 }
 
 const iso = (time: number | null) => (time === null ? null : new Date(time).toISOString());
@@ -117,6 +121,58 @@ function toDetails(project: StoredProject): ProjectDetails {
   };
 }
 
+const SAMPLE_ANSWERS: QuestionnaireAnswers = {
+  preSurvey: {
+    problemToSolve: "We lose track of customer interviews.\nNotes end up scattered over documents and chats.",
+    buyMotivation: "A single place that turns recordings into findings the whole team can search.",
+    budgetRange: "€1-5K",
+    urgency: 4,
+  },
+  postSurvey: {
+    disappointed: "Very disappointed",
+    wouldBuy: "Maybe",
+    mostConfusing: "It was not clear at first where to start the test.",
+    likedMost: "The summary view. It saved a lot of time.",
+    whatsMissing: "Export to our existing tools.",
+  },
+};
+
+// A two-second clip drawn on a canvas and recorded in the browser, so the mock needs no video file.
+// Created once, on the first playback request.
+let sampleClip: Promise<{ url: string; sizeBytes: number }> | null = null;
+function sampleVideo() {
+  sampleClip ??= new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 640;
+    canvas.height = 360;
+    const context = canvas.getContext("2d")!;
+    const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: "video/webm" });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (event) => chunks.push(event.data);
+    recorder.onerror = () => reject(new Error("Could not record the sample clip"));
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: "video/webm" });
+      resolve({ url: URL.createObjectURL(blob), sizeBytes: blob.size });
+    };
+
+    const started = performance.now();
+    const frame = window.setInterval(() => {
+      const elapsed = performance.now() - started;
+      context.fillStyle = `hsl(${(elapsed / 10) % 360} 60% 40%)`;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#fff";
+      context.font = "32px sans-serif";
+      context.fillText(`Sample recording ${(elapsed / 1000).toFixed(1)} s`, 40, 190);
+      if (elapsed >= 2000) {
+        window.clearInterval(frame);
+        recorder.stop();
+      }
+    }, 33);
+    recorder.start();
+  });
+  return sampleClip;
+}
+
 function seed(): StoredProject[] {
   const now = Date.now();
   const markets = FIELDS.find((def) => def.key === "market")!.options;
@@ -140,6 +196,7 @@ function seed(): StoredProject[] {
       readyAt: null,
       invitations: [],
       questionnaireSubmitted: false,
+      answers: null,
       recordings: { camera: "NOT_STARTED", screen: "NOT_STARTED" },
     };
     if (i % 7 === 6) return base; // no link yet
@@ -152,6 +209,7 @@ function seed(): StoredProject[] {
           readyAt: started + HOUR,
           invitations: [invitation(age, 7 * DAY, { startedAt: started, lastUsedAt: started + HOUR })],
           questionnaireSubmitted: true,
+          answers: SAMPLE_ANSWERS,
           recordings: { camera: "VERIFIED", screen: "VERIFIED" },
         };
       }
@@ -161,6 +219,7 @@ function seed(): StoredProject[] {
           ...base,
           invitations: [invitation(age, 7 * DAY, { startedAt: started, lastUsedAt: now - HOUR })],
           questionnaireSubmitted: true,
+          answers: SAMPLE_ANSWERS,
           recordings: { camera: "VERIFIED", screen: "UPLOAD_REQUESTED" },
         };
       }
@@ -244,6 +303,7 @@ function createProject(body: unknown, definitions: ProjectFieldDefinition[]): Fu
     readyAt: null,
     invitations: [],
     questionnaireSubmitted: false,
+    answers: null,
     recordings: { camera: "NOT_STARTED", screen: "NOT_STARTED" },
   };
   projects().unshift(project);
@@ -298,6 +358,24 @@ function listProjects(query: URLSearchParams): FunctionResponse {
   });
 }
 
+async function playbackUrl(project: StoredProject, kind: string | undefined): Promise<FunctionResponse> {
+  if (kind !== "camera" && kind !== "screen") return invalid("Unknown recording kind.");
+  if (project.recordings[kind] !== "VERIFIED") return fail(404, "not_found", "Recording not found");
+
+  try {
+    const clip = await sampleVideo();
+    return reply(200, {
+      url: clip.url,
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      contentType: "video/webm",
+      sizeBytes: clip.sizeBytes,
+      durationMs: 2000,
+    });
+  } catch {
+    return fail(500, "internal_error", "The mock could not create a sample clip in this browser");
+  }
+}
+
 export async function mockTransport({ method, path, body }: FunctionRequest): Promise<FunctionResponse> {
   await new Promise((resolve) => setTimeout(resolve, LATENCY_MS));
 
@@ -307,6 +385,7 @@ export async function mockTransport({ method, path, body }: FunctionRequest): Pr
 
   const url = new URL(path, "http://mock.invalid/");
   // admin-api / projects / {projectId} / invitations / {invitationId} / revoke
+  // admin-api / projects / {projectId} / recordings / {kind} / playback-url
   const [, resource, projectId, sub, invitationId, action] = url.pathname.split("/").filter(Boolean);
 
   if (resource === "project-fields" && method === "GET") return reply(200, { items: definitions });
@@ -321,6 +400,12 @@ export async function mockTransport({ method, path, body }: FunctionRequest): Pr
   if (!project) return fail(404, "not_found", "Project not found");
 
   if (!sub && method === "GET") return reply(200, toDetails(project));
+  if (sub === "questionnaire-response" && method === "GET") {
+    return project.answers
+      ? reply(200, { answers: project.answers, submittedAt: iso(project.readyAt ?? project.createdAt) })
+      : fail(404, "not_found", "No answers stored");
+  }
+  if (sub === "recordings" && action === "playback-url" && method === "GET") return playbackUrl(project, invitationId);
   if (sub === "invitations" && !invitationId && method === "POST") return createInvitation(project, body);
   if (sub === "invitations" && action === "revoke" && method === "POST") {
     const inv = project.invitations.find((item) => item.id === invitationId);

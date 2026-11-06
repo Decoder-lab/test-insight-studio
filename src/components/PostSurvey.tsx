@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ArrowUpRight, Loader2 } from "lucide-react";
-import { DISAPPOINTED_OPTIONS, WOULD_BUY_OPTIONS } from "@/lib/respondent-api/questionnaire";
+import { DISAPPOINTED_OPTIONS, POST_SURVEY_QUESTIONS, WOULD_BUY_OPTIONS } from "@/lib/respondent-api/questionnaire";
 import type { PostSurveyAnswers } from "@/lib/respondent-api/types";
 
 const postSurveySchema = z.object({
@@ -56,7 +56,7 @@ const PostSurvey = ({ onComplete, error, submitLabel = "View Results" }: PostSur
 
         <FormField control={form.control} name="disappointed" render={({ field }) => (
           <FormItem>
-            <FormLabel>How would you feel if you could no longer use this product?</FormLabel>
+            <FormLabel>{POST_SURVEY_QUESTIONS.disappointed}</FormLabel>
             <Select onValueChange={field.onChange} value={field.value ?? ""}>
               <FormControl>
                 <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
@@ -73,7 +73,7 @@ const PostSurvey = ({ onComplete, error, submitLabel = "View Results" }: PostSur
 
         <FormField control={form.control} name="wouldBuy" render={({ field }) => (
           <FormItem>
-            <FormLabel>Would you buy this product?</FormLabel>
+            <FormLabel>{POST_SURVEY_QUESTIONS.wouldBuy}</FormLabel>
             <Select onValueChange={field.onChange} value={field.value ?? ""}>
               <FormControl>
                 <SelectTrigger><SelectValue placeholder="Select an option" /></SelectTrigger>
@@ -90,7 +90,7 @@ const PostSurvey = ({ onComplete, error, submitLabel = "View Results" }: PostSur
 
         <FormField control={form.control} name="mostConfusing" render={({ field }) => (
           <FormItem>
-            <FormLabel>What was most confusing?</FormLabel>
+            <FormLabel>{POST_SURVEY_QUESTIONS.mostConfusing}</FormLabel>
             <FormControl><Textarea placeholder="The part that confused me was…" {...field} /></FormControl>
             <FormMessage />
           </FormItem>
@@ -98,7 +98,7 @@ const PostSurvey = ({ onComplete, error, submitLabel = "View Results" }: PostSur
 
         <FormField control={form.control} name="likedMost" render={({ field }) => (
           <FormItem>
-            <FormLabel>What did you like most?</FormLabel>
+            <FormLabel>{POST_SURVEY_QUESTIONS.likedMost}</FormLabel>
             <FormControl><Textarea placeholder="The thing I liked most was…" {...field} /></FormControl>
             <FormMessage />
           </FormItem>
@@ -106,7 +106,7 @@ const PostSurvey = ({ onComplete, error, submitLabel = "View Results" }: PostSur
 
         <FormField control={form.control} name="whatsMissing" render={({ field }) => (
           <FormItem>
-            <FormLabel>What's missing?</FormLabel>
+            <FormLabel>{POST_SURVEY_QUESTIONS.whatsMissing}</FormLabel>
             <FormControl><Textarea placeholder="I wish it had…" {...field} /></FormControl>
             <FormMessage />
           </FormItem>

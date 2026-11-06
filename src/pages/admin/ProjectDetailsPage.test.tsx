@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminApiError } from "@/lib/admin-api/errors";
-import { field, invitation, projectDetails, renderAdminRoute } from "@/test/admin-fixtures";
+import { field, invitation, playback, projectDetails, questionnaireResponse, renderAdminRoute } from "@/test/admin-fixtures";
 import ProjectDetailsPage from "./ProjectDetailsPage";
 
 const api = vi.hoisted(() => ({
@@ -9,6 +9,8 @@ const api = vi.hoisted(() => ({
   listProjectFields: vi.fn(),
   createInvitation: vi.fn(),
   revokeInvitation: vi.fn(),
+  getQuestionnaireResponse: vi.fn(),
+  getRecordingPlayback: vi.fn(),
 }));
 vi.mock("@/lib/admin-api/client", () => ({ adminApi: api }));
 
@@ -25,6 +27,8 @@ beforeEach(() => {
   api.listProjectFields.mockResolvedValue({ items: [] });
   api.getProject.mockResolvedValue(projectDetails());
   api.createInvitation.mockResolvedValue({ invitation: invitation({ id: "inv-new" }), token: TOKEN });
+  api.getQuestionnaireResponse.mockRejectedValue(new AdminApiError("api", 404, "not_found", "x"));
+  api.getRecordingPlayback.mockResolvedValue(playback());
 });
 
 describe("project data", () => {
@@ -184,5 +188,165 @@ describe("invitations", () => {
 
     expect(await screen.findByText(/its link could not be created/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create link" })).toBeInTheDocument();
+  });
+});
+
+const READY = { status: "READY", readyAt: "2026-11-03T10:00:00.000Z" } as const;
+const camera = () => screen.findByLabelText("Camera recording", { selector: "video" });
+
+describe("questionnaire answers", () => {
+  it("shows the stored answers under the questions the respondent saw", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ ...READY, questionnaireSubmitted: true }));
+    api.getQuestionnaireResponse.mockResolvedValue(questionnaireResponse());
+    renderPage();
+
+    expect(await screen.findByText("What problem are you trying to solve?")).toBeInTheDocument();
+    expect(screen.getByText("Interview notes get lost")).toBeInTheDocument();
+    expect(screen.getByText("€1-5K")).toBeInTheDocument();
+    expect(screen.getByText("4 / 5")).toBeInTheDocument();
+    expect(screen.getByText("How would you feel if you could no longer use this product?")).toBeInTheDocument();
+    expect(screen.getByText("Very disappointed")).toBeInTheDocument();
+    expect(screen.getByText("Export to other tools")).toBeInTheDocument();
+    expect(screen.getByText(/Last saved 3 Nov 2026/)).toBeInTheDocument();
+    expect(api.getQuestionnaireResponse).toHaveBeenCalledWith("p1");
+  });
+
+  it("says the post-survey is missing when only the pre-survey is stored", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ status: "IN_PROGRESS" }));
+    const { answers, submittedAt } = questionnaireResponse();
+    api.getQuestionnaireResponse.mockResolvedValue({ answers: { preSurvey: answers.preSurvey }, submittedAt });
+    renderPage();
+
+    expect(await screen.findByText("Interview notes get lost")).toBeInTheDocument();
+    expect(screen.getByText("The post-survey has not been submitted yet.")).toBeInTheDocument();
+  });
+
+  it("treats not_found as nothing submitted yet, not as an error", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ status: "IN_PROGRESS" }));
+    renderPage();
+
+    expect(await screen.findByText("No answers submitted yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not ask for answers before anything can have been submitted", async () => {
+    renderPage();
+
+    expect(await screen.findByText("No answers submitted yet.")).toBeInTheDocument();
+    expect(api.getQuestionnaireResponse).not.toHaveBeenCalled();
+  });
+
+  it("shows a retry for other failures", async () => {
+    api.getProject.mockResolvedValue(projectDetails(READY));
+    api.getQuestionnaireResponse.mockRejectedValueOnce(new AdminApiError("network", 0));
+    api.getQuestionnaireResponse.mockResolvedValue(questionnaireResponse());
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Interview notes get lost")).toBeInTheDocument();
+    expect(api.getQuestionnaireResponse).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders free-text answers as text, never as markup", async () => {
+    api.getProject.mockResolvedValue(projectDetails(READY));
+    const stored = questionnaireResponse();
+    stored.answers.preSurvey.problemToSolve = "<img src=x onerror=alert(1)> first line\nsecond line";
+    api.getQuestionnaireResponse.mockResolvedValue(stored);
+    const { container } = renderPage();
+
+    expect(await screen.findByText(/<img src=x onerror=alert\(1\)> first line/)).toBeInTheDocument();
+    expect(container.querySelector("img")).toBeNull();
+  });
+});
+
+describe("recordings", () => {
+  it("plays a verified recording with the signed URL and shows its details", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ ...READY, recordings: { camera: "VERIFIED", screen: "NOT_STARTED" } }));
+    renderPage();
+
+    const video = await camera();
+    expect(video).toHaveAttribute("src", playback().url);
+    expect(video).toHaveAttribute("controls");
+    expect(screen.getByText("1:05 · 1.5 MB · video/webm")).toBeInTheDocument();
+    expect(api.getRecordingPlayback).toHaveBeenCalledTimes(1);
+    expect(api.getRecordingPlayback).toHaveBeenCalledWith("p1", "camera");
+  });
+
+  it("lists both kinds and only asks for a URL for the verified ones", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ recordings: { camera: "UPLOAD_REQUESTED", screen: "NOT_STARTED" } }));
+    renderPage();
+
+    expect(await screen.findByText("Upload requested, not verified yet.")).toBeInTheDocument();
+    expect(screen.getByText("No recording yet.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Camera recording" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Screen recording" })).toBeInTheDocument();
+    expect(api.getRecordingPlayback).not.toHaveBeenCalled();
+  });
+
+  it("shows a player for the screen recording when it is verified too", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ ...READY, recordings: { camera: "VERIFIED", screen: "VERIFIED" } }));
+    renderPage();
+
+    await waitFor(() => expect(document.querySelectorAll("video")).toHaveLength(2));
+    expect(api.getRecordingPlayback.mock.calls).toEqual(expect.arrayContaining([["p1", "camera"], ["p1", "screen"]]));
+  });
+
+  it("shows a loading state while the URL is requested", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ recordings: { camera: "VERIFIED", screen: "NOT_STARTED" } }));
+    api.getRecordingPlayback.mockReturnValue(new Promise(() => undefined));
+    renderPage();
+
+    expect(await screen.findByRole("status", { name: "Loading camera recording" })).toBeInTheDocument();
+  });
+
+  it("says when the stored file is gone, without a retry", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ recordings: { camera: "VERIFIED", screen: "NOT_STARTED" } }));
+    api.getRecordingPlayback.mockRejectedValue(new AdminApiError("api", 404, "not_found", "x"));
+    renderPage();
+
+    expect(await screen.findByText("The recording file could not be found.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
+  it("offers a retry when the URL cannot be requested", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ recordings: { camera: "VERIFIED", screen: "NOT_STARTED" } }));
+    api.getRecordingPlayback.mockRejectedValueOnce(new AdminApiError("network", 0));
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    expect(await camera()).toBeInTheDocument();
+    expect(api.getRecordingPlayback).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks for a new URL once when playback fails, then offers a retry", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ recordings: { camera: "VERIFIED", screen: "NOT_STARTED" } }));
+    api.getRecordingPlayback
+      .mockResolvedValueOnce(playback({ url: "https://storage.example/first" }))
+      .mockResolvedValue(playback({ url: "https://storage.example/second" }));
+    renderPage();
+
+    const video = await camera();
+    fireEvent.error(video); // e.g. the first URL expired
+    await waitFor(() => expect(video).toHaveAttribute("src", "https://storage.example/second"));
+    expect(api.getRecordingPlayback).toHaveBeenCalledTimes(2);
+
+    fireEvent.error(video);
+    expect(await screen.findByText("This recording could not be played.")).toBeInTheDocument();
+    expect(api.getRecordingPlayback).toHaveBeenCalledTimes(2); // no loop
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await camera()).toBeInTheDocument();
+    expect(api.getRecordingPlayback).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps the signed URL out of storage and out of the visible text", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ recordings: { camera: "VERIFIED", screen: "NOT_STARTED" } }));
+    renderPage();
+
+    await camera();
+    expect(document.body.textContent).not.toContain("READ-TOKEN");
+    expect(localStorage.length + sessionStorage.length).toBe(0);
   });
 });

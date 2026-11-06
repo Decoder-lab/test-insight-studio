@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Test Insight Studio Backend API
-  version: 0.5.0-draft
+  version: 0.6.0-draft
   summary: Contract between the public React frontend and the Supabase backend.
   description: |
     Canonical contract for two logical APIs implemented as Supabase Edge Functions:
@@ -11,12 +11,16 @@ info:
 
     ## Status of this document
 
-    This is a **draft**. The `admin-api` operations and the `respondent-api` operations
-    `validateInvitation`, `getRespondentProject` and `submitQuestionnaire` are implemented and tested
-    locally but are not deployed to the hosted project yet; the other `respondent-api` business
-    operations (`createUploadUrl`, `verifyRecording`, `completeProject`) still answer
-    `501 not_implemented` (after the invitation token has been checked). Version 0.5.0 proposes their
-    final behaviour for Track A's review; nothing in it is implemented yet.
+    This is a **draft**. Every operation of both APIs is implemented and tested locally, but none of it
+    is deployed to the hosted project yet. Version 0.5.0 adds the final behaviour of the three recording
+    operations (`createUploadUrl`, `verifyRecording`, `completeProject`), which Track A reviewed as a
+    proposal and still has to review as an implementation.
+
+    Version 0.6.0 lets an administrator see the results of a finished test. `getProject` now reports the
+    real `questionnaireSubmitted` and `recordings` values (they were fixed placeholders; the schema is
+    unchanged). Two new admin operations are `proposed`: `getQuestionnaireResponse` (the stored answers)
+    and `getRecordingPlaybackUrl` (a short-lived signed read URL for one verified recording). Track A
+    wrote their shapes and has reviewed them as a proposal; the implementation is still to be reviewed.
 
     * **Confirmed** (from the project brief): the set of planned operations, the two authentication
       models, the 120 second recording limit, the 50 MB object size limit (Supabase Free plan), the
@@ -27,9 +31,9 @@ info:
       (frontend) before implementation**.
     * **Confirmed after review**: `validateInvitation` and `getRespondentProject` carry
       `x-status: confirmed` because Track A reviewed and signed them off after implementation
-      (2026-11-01). The other respondent operations stay `proposed` until they are implemented and
-      reviewed. `submitQuestionnaire` is implemented but still `proposed`: Track A has not reviewed
-      the implementation yet.
+      (2026-11-01). The other respondent operations stay `proposed` until Track A has reviewed their
+      implementation: `submitQuestionnaire` and the three recording operations are implemented but
+      still `proposed`.
 
     The questionnaire answers are defined by the frontend's survey schemas (`QuestionnaireAnswers`).
     No other questionnaire field exists; a new question is a contract change.
@@ -201,6 +205,11 @@ paths:
       operationId: getProject
       tags: [admin]
       summary: Get project details
+      description: |
+        `questionnaireSubmitted` and `recordings` are the respondent's real progress, computed from what
+        is stored: `questionnaireSubmitted` is `true` once a `postSurvey` is stored (the same rule as
+        `RespondentProject.progress`; a pre-survey alone leaves it `false`), and `recordings.camera` /
+        `recordings.screen` mirror the respondent-side `RecordingProgress` of each kind.
       x-status: proposed
       security:
         - adminBearer: []
@@ -211,6 +220,92 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectDetails"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /admin-api/projects/{projectId}/questionnaire-response:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getQuestionnaireResponse
+      tags: [admin]
+      summary: Read the stored questionnaire answers of a project
+      description: |
+        Returns the answers exactly as stored: `preSurvey` always, `postSurvey` only once the
+        post-survey was submitted (omitted until then, never `null`). `submittedAt` is when the stored
+        answers were last replaced, as in `QuestionnaireReceipt`. Works for a project in any status,
+        including `READY`, and when only `preSurvey` is stored.
+
+        Answers are respondent data: free text must be rendered as plain text and never be logged.
+
+        `404 not_found` for an unknown project **and** for a project that has no answers stored yet; a
+        client should treat the second case as an empty state, not as an error.
+      x-status: proposed
+      security:
+        - adminBearer: []
+      responses:
+        "200":
+          description: The stored answers.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionnaireResponseDetails"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /admin-api/projects/{projectId}/recordings/{kind}/playback-url:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/RecordingKind"
+    get:
+      operationId: getRecordingPlaybackUrl
+      tags: [admin]
+      summary: Get a short-lived URL to play one verified recording
+      description: |
+        Returns a signed Storage **read** URL for the stored object, created by `admin-api` (browsers
+        have no Storage access of their own). Use it as the `src` of a `<video>` element: it serves the
+        object inline and supports `Range` requests, and, because it is a plain media request, needs
+        no `crossorigin` attribute. It is not the download variant.
+
+        The URL is valid until `expiresAt` (15 minutes after the response was created). It is a
+        credential: do not log it, store it or share it. When playback fails (for example the URL
+        expired), request a new one.
+
+        `contentType` and `sizeBytes` are what `verifyRecording` stored. `durationMs` is the duration
+        reported by the client when the recording was verified: informational, not verified by the
+        server (see docs/security.md, "Recording constraints").
+
+        `404 not_found`: unknown project, a `kind` that is not `VERIFIED` (no upload requested, or
+        `UPLOAD_REQUESTED`), or a verified recording whose stored object is gone. An unknown `kind`
+        value is `400 validation_error`.
+      x-status: proposed
+      security:
+        - adminBearer: []
+      responses:
+        "200":
+          description: Signed read URL.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordingPlayback"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -501,9 +596,10 @@ paths:
       summary: Verify an uploaded recording
       description: |
         Call after the browser upload finished. The server checks that the object exists at the
-        path it issued for this `kind`, is within the size limit, and has an allowed content type. The
-        duration is reported by the client and only range-checked (1 to 120000 ms); the server cannot
-        fully verify it (see docs/security.md, "Recording constraints").
+        path it issued for this `kind`, is not empty, is within the size limit, and has the content
+        type that was requested with `createUploadUrl` (codec parameters Storage may keep on the stored
+        type are ignored). The duration is reported by the client and only range-checked (1 to 120000
+        ms); the server cannot fully verify it (see docs/security.md, "Recording constraints").
 
         **Repeatable.** While the recording is not verified, the call may be repeated (for example after
         a network error, a `5xx` or a `429`) without requesting a new upload URL. Once it is `VERIFIED`
@@ -528,8 +624,8 @@ paths:
                 $ref: "#/components/schemas/VerifyRecordingResponse"
         "400":
           description: |
-            `validation_error`: the object is over the size limit, has a content type that is not
-            allowed, or `durationMs` is missing or out of range; also a malformed body.
+            `validation_error`: the object is over the size limit, is not of the content type that was
+            requested, or `durationMs` is missing or out of range; also a malformed body.
           content:
             application/json:
               schema:
@@ -538,8 +634,8 @@ paths:
           $ref: "#/components/responses/InvalidInvitation"
         "404":
           description: |
-            `not_found`: no upload was requested for this `kind`, or no object exists at the expected
-            path (the upload did not happen or did not finish).
+            `not_found`: no upload was requested for this `kind`, or no (non-empty) object exists at
+            the expected path (the upload did not happen or did not finish).
           content:
             application/json:
               schema:
@@ -860,8 +956,14 @@ components:
                 $ref: "#/components/schemas/InvitationSummary"
             questionnaireSubmitted:
               type: boolean
+              description: |
+                `true` once the stored answers contain a `postSurvey` (same rule as
+                `RespondentProject.progress.questionnaireSubmitted`). A pre-survey alone leaves it `false`.
             recordings:
               type: object
+              description: |
+                Progress of each recording kind, as the respondent sees it. Both kinds are always
+                reported, including the one `completeProject` does not require (currently `screen`).
               required: [camera, screen]
               properties:
                 camera:
@@ -1057,6 +1159,39 @@ components:
           type: string
           format: date-time
           description: When the stored answers were last replaced.
+    QuestionnaireResponseDetails:
+      type: object
+      description: The stored answers of a project, for administrators. Respondent data.
+      required: [answers, submittedAt]
+      properties:
+        answers:
+          $ref: "#/components/schemas/QuestionnaireAnswers"
+        submittedAt:
+          type: string
+          format: date-time
+          description: When the stored answers were last replaced.
+    RecordingPlayback:
+      type: object
+      description: |
+        A signed read URL for one verified recording, with the metadata stored when it was verified.
+      required: [url, expiresAt, contentType, sizeBytes, durationMs]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: |
+            Signed Storage read URL, valid until `expiresAt`. A credential: do not log or keep it.
+            Play it directly in a `<video src>`; it supports `Range` and is served inline.
+        expiresAt:
+          type: string
+          format: date-time
+        contentType:
+          $ref: "#/components/schemas/RecordingContentType"
+        sizeBytes:
+          type: integer
+        durationMs:
+          type: integer
+          description: Duration measured by the respondent's client (informational, not verified).
     CreateUploadUrlRequest:
       type: object
       required: [contentType]
@@ -1083,7 +1218,10 @@ components:
         signedUrl:
           type: string
           format: uri
-          description: Full signed upload URL (contains the token). Do not log.
+          description: |
+            Full signed upload URL (contains the token). Do not log. Prefer `path` and `token` with
+            the client's own Storage URL: on the local stack this URL points at the gateway's internal
+            address, which a browser cannot reach.
         maxSizeBytes:
           type: integer
         maxDurationSeconds:
