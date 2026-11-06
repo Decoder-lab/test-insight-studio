@@ -25,3 +25,9 @@ export function formatDate(value: string | null | undefined): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : format(date, "d MMM yyyy");
 }
+
+/** `1:05` for 65000 ms; `0:02` for 2000. Hours are not needed: recordings are limited to 120 seconds. */
+export function formatDuration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.round(milliseconds / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}

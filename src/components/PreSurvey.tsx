@@ -9,7 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { ArrowUpRight, Loader2 } from "lucide-react";
-import { BUDGET_RANGES } from "@/lib/respondent-api/questionnaire";
+import { BUDGET_RANGES, PRE_SURVEY_QUESTIONS } from "@/lib/respondent-api/questionnaire";
 import type { PreSurveyAnswers } from "@/lib/respondent-api/types";
 
 const preSurveySchema = z.object({
@@ -60,7 +60,7 @@ const PreSurvey = ({ onComplete, error, submitLabel = "Continue to recording" }:
 
         <FormField control={form.control} name="problemToSolve" render={({ field }) => (
           <FormItem>
-            <FormLabel>What problem are you trying to solve?</FormLabel>
+            <FormLabel>{PRE_SURVEY_QUESTIONS.problemToSolve}</FormLabel>
             <FormControl><Textarea placeholder="Describe the core problem…" {...field} /></FormControl>
             <FormMessage />
           </FormItem>
@@ -68,7 +68,7 @@ const PreSurvey = ({ onComplete, error, submitLabel = "Continue to recording" }:
 
         <FormField control={form.control} name="buyMotivation" render={({ field }) => (
           <FormItem>
-            <FormLabel>What would make you buy this product?</FormLabel>
+            <FormLabel>{PRE_SURVEY_QUESTIONS.buyMotivation}</FormLabel>
             <FormControl><Textarea placeholder="What features or outcomes would convince you?" {...field} /></FormControl>
             <FormMessage />
           </FormItem>
@@ -76,7 +76,7 @@ const PreSurvey = ({ onComplete, error, submitLabel = "Continue to recording" }:
 
         <FormField control={form.control} name="budgetRange" render={({ field }) => (
           <FormItem>
-            <FormLabel>What's your budget range?</FormLabel>
+            <FormLabel>{PRE_SURVEY_QUESTIONS.budgetRange}</FormLabel>
             <Select onValueChange={field.onChange} value={field.value ?? ""}>
               <FormControl>
                 <SelectTrigger><SelectValue placeholder="Select budget range" /></SelectTrigger>
@@ -93,7 +93,7 @@ const PreSurvey = ({ onComplete, error, submitLabel = "Continue to recording" }:
 
         <FormField control={form.control} name="urgency" render={({ field }) => (
           <FormItem>
-            <FormLabel>How urgent is solving this? ({field.value}/5)</FormLabel>
+            <FormLabel>{PRE_SURVEY_QUESTIONS.urgency} ({field.value}/5)</FormLabel>
             <FormControl>
               <Slider min={1} max={5} step={1} value={[field.value]} onValueChange={(v) => field.onChange(v[0])} />
             </FormControl>

@@ -12,6 +12,9 @@ import type {
   ProjectDetails,
   ProjectFieldList,
   ProjectList,
+  QuestionnaireResponseDetails,
+  RecordingKind,
+  RecordingPlayback,
 } from "./types";
 
 const API = "admin-api";
@@ -157,6 +160,32 @@ export const adminApi = {
     send<ProjectDetails>(
       { method: "GET", path: projectPath(projectId) },
       (body) => hasId(body) && Array.isArray((body as ProjectDetails).invitations),
+    ),
+
+  /**
+   * Reads the stored questionnaire answers of a project (respondent data: never log them).
+   * Answers `not_found` for an unknown project and for one without stored answers; callers treat
+   * the second case as "nothing submitted yet".
+   * @param projectId The ID of the project.
+   * @returns The stored answers and when they were last replaced.
+   */
+  getQuestionnaireResponse: (projectId: string) =>
+    send<QuestionnaireResponseDetails>(
+      { method: "GET", path: `${projectPath(projectId)}/questionnaire-response` },
+      (body) => isObject(body) && isObject(body.answers) && isObject(body.answers.preSurvey) && typeof body.submittedAt === "string",
+    ),
+
+  /**
+   * Requests a short-lived signed URL to play one verified recording.
+   * The URL is a credential: callers must keep it out of logs and storage.
+   * @param projectId The ID of the project.
+   * @param kind Which recording to play.
+   * @returns The signed read URL with its expiry and the stored metadata.
+   */
+  getRecordingPlayback: (projectId: string, kind: RecordingKind) =>
+    send<RecordingPlayback>(
+      { method: "GET", path: `${projectPath(projectId)}/recordings/${encodeURIComponent(kind)}/playback-url` },
+      (body) => isObject(body) && typeof body.url === "string" && typeof body.expiresAt === "string",
     ),
 
   /**

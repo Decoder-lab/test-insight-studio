@@ -1,5 +1,10 @@
-// Hand-written from contracts/openapi.yaml (Test Insight Studio Backend API, 0.2.0-draft).
+// Hand-written from contracts/openapi.yaml (Test Insight Studio Backend API, 0.6.0-draft).
 // Keep in sync with the contract; do not add fields that are not in it.
+
+import type { QuestionnaireAnswers, RecordingContentType, RecordingKind } from "@/lib/respondent-api/types";
+
+// The answer and recording shapes are the respondent API's; the admin API returns the same ones.
+export type { QuestionnaireAnswers, RecordingContentType, RecordingKind };
 
 export type ErrorCode =
   | "validation_error"
@@ -87,10 +92,29 @@ export interface ProjectList {
 export interface ProjectDetails extends Project {
   /** The active invitation for the project, if any. */
   invitations: InvitationSummary[];
-  /** Whether the questionnaire has been submitted. */
+  /** `true` once a `postSurvey` is stored; a pre-survey alone leaves it `false`. */
   questionnaireSubmitted: boolean;
-  /** The questionnaire for the project, if any. */
-  recordings: { camera: RecordingProgress; screen: RecordingProgress };
+  /** Progress of each recording kind, as the respondent sees it. */
+  recordings: Record<RecordingKind, RecordingProgress>;
+}
+
+/** The stored answers of a project (respondent data: render as plain text, never log). */
+export interface QuestionnaireResponseDetails {
+  answers: QuestionnaireAnswers;
+  /** ISO 8601 date-time when the stored answers were last replaced. */
+  submittedAt: string;
+}
+
+/** A signed read URL for one verified recording, with the metadata stored when it was verified. */
+export interface RecordingPlayback {
+  /** Signed Storage read URL for a `<video src>`, valid until `expiresAt`. A credential: do not log or keep it. */
+  url: string;
+  /** ISO 8601 date-time. */
+  expiresAt: string;
+  contentType: RecordingContentType;
+  sizeBytes: number;
+  /** Measured by the respondent's client; informational, not verified by the server. */
+  durationMs: number;
 }
 
 export interface CreateProjectRequest {

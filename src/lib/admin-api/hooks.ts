@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { buildInvitationLink } from "@/lib/respondent-link";
 import { adminApi } from "./client";
-import type { CreateProjectRequest, InvitationSummary, ProjectDetails, ProjectStatus } from "./types";
+import type { CreateProjectRequest, InvitationSummary, ProjectDetails, ProjectStatus, RecordingKind } from "./types";
 
 /** Every admin query lives under this key, so AdminLayout can drop them all on sign-out. */
 export const ADMIN_QUERY_KEY = "admin-api";
@@ -11,7 +11,12 @@ const keys = {
   fields: [ADMIN_QUERY_KEY, "project-fields"] as const,
   projects: (status?: ProjectStatus) => [ADMIN_QUERY_KEY, "projects", status ?? "all"] as const,
   project: (id: string) => [ADMIN_QUERY_KEY, "project", id] as const,
+  questionnaire: (id: string) => [ADMIN_QUERY_KEY, "questionnaire-response", id] as const,
+  playback: (id: string, kind: RecordingKind) => [ADMIN_QUERY_KEY, "playback", id, kind] as const,
 };
+
+// Signed read URLs live 15 minutes (contract). Treat one as stale well before that.
+const PLAYBACK_STALE_MS = 5 * 60_000;
 
 // Errors are categorised by the client and retried by the user ("Retry"), not automatically.
 const noRetry = { retry: false } as const;
@@ -44,6 +49,40 @@ export const useProjects = (status?: ProjectStatus) =>
  */
 export const useProject = (projectId: string) =>
   useQuery({ queryKey: keys.project(projectId), queryFn: () => adminApi.getProject(projectId), ...noRetry });
+
+/**
+ * Fetches the stored questionnaire answers of a project. The backend answers `not_found` both for an
+ * unknown project and for one without answers; the caller shows the second as an empty state.
+ * @param projectId The ID of the project.
+ * @param enabled Whether to fetch at all, e.g. not before anything was submitted.
+ * @returns The stored answers.
+ */
+export const useQuestionnaireResponse = (projectId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.questionnaire(projectId),
+    queryFn: () => adminApi.getQuestionnaireResponse(projectId),
+    enabled,
+    ...noRetry,
+  });
+
+/**
+ * Requests a signed URL to play one verified recording. The URL is a credential: it is dropped from the
+ * cache as soon as the player unmounts (`gcTime: 0`) and never written anywhere else.
+ * @param projectId The ID of the project.
+ * @param kind Which recording to play.
+ * @param enabled Whether to request it, i.e. only for a `VERIFIED` recording.
+ * @returns The playback URL with its metadata.
+ */
+export const useRecordingPlayback = (projectId: string, kind: RecordingKind, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.playback(projectId, kind),
+    queryFn: () => adminApi.getRecordingPlayback(projectId, kind),
+    enabled,
+    gcTime: 0,
+    staleTime: PLAYBACK_STALE_MS,
+    refetchOnWindowFocus: false,
+    ...noRetry,
+  });
 
 /**
  * Creates a new project.
