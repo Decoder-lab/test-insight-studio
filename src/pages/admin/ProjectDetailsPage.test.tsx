@@ -45,6 +45,23 @@ describe("project data", () => {
     expect(screen.getByText("Yes")).toBeInTheDocument();
   });
 
+  it("shows the target URL and lets the administrator check it again", async () => {
+    api.getProject.mockResolvedValue(projectDetails({ targetUrl: "https://shop.example.org/start" }));
+    renderPage();
+
+    expect(await screen.findByText("Target URL")).toBeInTheDocument();
+    expect(screen.getByText("https://shop.example.org/start")).toBeInTheDocument();
+    expect(screen.queryByTitle("Target page preview")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Check" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Check the target page" });
+    expect(within(dialog).getByTitle("Target page preview")).toHaveAttribute("src", "https://shop.example.org/start");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
   it("still shows the project, with raw keys, when the definitions cannot be loaded", async () => {
     api.listProjectFields.mockRejectedValue(new AdminApiError("not_ready", 501));
     api.getProject.mockResolvedValue(projectDetails({ fields: { title: "Hello" } }));

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Test Insight Studio Backend API
-  version: 0.6.0-draft
+  version: 0.7.0-draft
   summary: Contract between the public React frontend and the Supabase backend.
   description: |
     Canonical contract for two logical APIs implemented as Supabase Edge Functions:
@@ -22,6 +22,18 @@ info:
     and `getRecordingPlaybackUrl` (a short-lived signed read URL for one verified recording). Track A
     wrote their shapes and has reviewed them as a proposal; the implementation is still to be reviewed.
 
+    Version 0.7.0 gives every project a **target URL** (`targetUrl`): the web page the respondent browses
+    inside an iframe while the camera records. The administrator supplies it in `createProject` (required,
+    validated by the rule in `CreateProjectRequest`), and it is returned by `createProject`, `listProjects`,
+    `getProject` (`Project`) and to the respondent by `validateInvitation` and `getRespondentProject`
+    (`RespondentProject`). It is written only by `createProject`; no operation changes it afterwards. The
+    server never requests this URL, so it cannot tell whether the page allows being shown in an iframe:
+    that check belongs to the frontend. `RespondentProject` is a required-field addition, so the backend
+    must be deployed before a frontend release that reads it. Existing projects were given
+    `https://example.com`. Because their response schema changed, `validateInvitation` and
+    `getRespondentProject` went back from `confirmed` to `proposed` until Track A has reviewed the
+    implementation.
+
     * **Confirmed** (from the project brief): the set of planned operations, the two authentication
       models, the 120 second recording limit, the 50 MB object size limit (Supabase Free plan), the
       private `recordings` bucket with separate camera and screen recordings, direct browser-to-Storage
@@ -29,9 +41,10 @@ info:
     * **Proposed** (everything else): paths, field names, extra statuses, error codes and the
       invitation header. These are marked `x-status: proposed` and **must be reviewed with Track A
       (frontend) before implementation**.
-    * **Confirmed after review**: `validateInvitation` and `getRespondentProject` carry
-      `x-status: confirmed` because Track A reviewed and signed them off after implementation
-      (2026-11-01). The other respondent operations stay `proposed` until Track A has reviewed their
+    * **Confirmed after review**: `validateInvitation` and `getRespondentProject` were signed off by
+      Track A after implementation (2026-11-01) and carried `x-status: confirmed`; version 0.7.0 added
+      `targetUrl` to their response, so they are `proposed` again until Track A reviews that
+      implementation. The other respondent operations stay `proposed` until Track A has reviewed their
       implementation: `submitQuestionnaire` and the three recording operations are implemented but
       still `proposed`.
 
@@ -176,6 +189,10 @@ paths:
       operationId: createProject
       tags: [admin]
       summary: Create a project
+      description: |
+        `targetUrl` is written only here: there is no operation that updates it afterwards. It must
+        follow the rule in `CreateProjectRequest`; a value that does not is `400 validation_error` whose
+        `message` starts with `targetUrl:`. The server never requests the URL.
       x-status: proposed
       security:
         - adminBearer: []
@@ -420,7 +437,10 @@ paths:
         start: it never interrupts a test that is already running. Only revocation (an administrator
         revoking or renewing the invitation) stops a started token; then every respondent operation
         answers `410 invitation_revoked`.
-      x-status: confirmed
+
+        The body carries `targetUrl`, the page the respondent browses while recording (added in 0.7.0,
+        hence `proposed` again until Track A has reviewed the implementation).
+      x-status: proposed
       security:
         - invitationToken: []
       responses:
@@ -444,8 +464,9 @@ paths:
       description: |
         Same body as `validateInvitation`. Unlike it, this operation also answers `200` after the
         respondent has started the test, even past the invitation's `expiresAt`. It is `410` only for
-        a revoked invitation or one that expired before the test started.
-      x-status: confirmed
+        a revoked invitation or one that expired before the test started. The body carries `targetUrl`
+        (added in 0.7.0, hence `proposed` again until Track A has reviewed the implementation).
+      x-status: proposed
       security:
         - invitationToken: []
       responses:
@@ -913,13 +934,15 @@ components:
         type: [string, number, boolean, "null"]
     Project:
       type: object
-      required: [id, name, status, fields, createdAt, readyAt]
+      required: [id, name, targetUrl, status, fields, createdAt, readyAt]
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
+        targetUrl:
+          $ref: "#/components/schemas/TargetUrl"
         status:
           $ref: "#/components/schemas/ProjectStatus"
         fields:
@@ -970,19 +993,47 @@ components:
                   $ref: "#/components/schemas/RecordingProgress"
                 screen:
                   $ref: "#/components/schemas/RecordingProgress"
+    TargetUrl:
+      type: string
+      minLength: 1
+      maxLength: 2048
+      description: |
+        The web page the respondent browses inside an iframe while the camera records. Rule, applied by
+        `createProject` to the value after surrounding whitespace was trimmed (the trimmed value is stored
+        and returned exactly as given, with no other normalisation):
+
+        * 1 to 2048 characters;
+        * no whitespace, control character (U+0000 to U+001F, U+007F to U+009F) or backslash anywhere in
+          the value. Whitespace is whatever JavaScript's `String.prototype.trim()` removes, so the
+          leading and trailing kind was already trimmed and this concerns what is inside the value;
+          write a space as `%20`. Browsers silently drop tabs and newlines and read `\` as `/`, so such a
+          value would not load the page the administrator checked;
+        * an absolute URL whose scheme is exactly `https` (lowercase) and whose host is not empty;
+        * no user info: `https://user:pass@host/` and `https://@host/` are rejected.
+
+        Everything else (`http:`, `javascript:`, `data:`, relative URLs, garbage) is
+        `400 validation_error`, and the `message` starts with `targetUrl:`. A client may show that
+        `message` as is. The server never requests the URL; whether the page can be shown in an iframe is
+        for the frontend to find out.
+
+        The URL is visible to everyone who holds an invitation of the project (it is part of
+        `RespondentProject`), so it must not contain secrets.
+      examples: ["https://example.com/pricing"]
     CreateProjectRequest:
       type: object
       description: |
-        `name` plus optional `fields`, whose shape is described by `listProjectFields`. Any other
-        top-level property is rejected. The link expiry is not part of this request: the "create test"
-        form calls `createInvitation` right after this operation.
-      required: [name]
+        `name` and `targetUrl`, plus optional `fields`, whose shape is described by `listProjectFields`.
+        Any other top-level property is rejected. The link expiry is not part of this request: the
+        "create test" form calls `createInvitation` right after this operation.
+      required: [name, targetUrl]
       additionalProperties: false
       properties:
         name:
           type: string
           minLength: 1
           maxLength: 200
+        targetUrl:
+          $ref: "#/components/schemas/TargetUrl"
         fields:
           $ref: "#/components/schemas/ProjectFieldValues"
     InvitationStatus:
@@ -1044,14 +1095,19 @@ components:
           examples: ["<opaque-invitation-token>"]
     RespondentProject:
       type: object
-      description: The only project information a respondent may see. Deliberately minimal.
-      required: [id, name, status, limits, progress]
+      description: |
+        The only project information a respondent may see. Deliberately minimal. `targetUrl` is the page
+        the respondent browses while recording; it is visible to anyone holding an invitation of the
+        project, so it must not contain secrets.
+      required: [id, name, targetUrl, status, limits, progress]
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
+        targetUrl:
+          $ref: "#/components/schemas/TargetUrl"
         status:
           $ref: "#/components/schemas/ProjectStatus"
         limits:

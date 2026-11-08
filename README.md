@@ -6,7 +6,7 @@ A frontend prototype for a product-market-fit (PMF) landing-page research flow. 
 
 This repository currently contains a client-side demo, not a production research or analytics service:
 
-- The test page embeds `https://example.com` and records the webcam with the microphone in the browser. The browser asks the participant for permissions. Screen recording is implemented (capture, upload, verify) but switched off: `ENABLED_RECORDING_KINDS` in `src/lib/recording/config.ts` lists what is recorded, and the screen is not in it.
+- The test page embeds the project's target URL (`targetUrl`, chosen by the administrator when the test is created and checked there with the "Check" button; the dev-only demo at `/dev/test-demo` embeds `https://example.com`) and records the webcam with the microphone in the browser. The browser asks the participant for permissions. Screen recording is implemented (capture, upload, verify) but switched off: `ENABLED_RECORDING_KINDS` in `src/lib/recording/config.ts` lists what is recorded, and the screen is not in it.
 - On `/dev/test-demo` nothing is sent anywhere: the upload step only waits a moment. On `/test` (opened from an invitation link) the pre- and post-test survey answers are sent to the backend, and the camera recording is uploaded straight to Storage (see below).
 - The results dashboard uses hard-coded sample scores, moments, and recommendations; the URL's session ID is displayed but does not load session data.
 - The results page's Download PDF, Share Results, and Book a Call controls are visual demo buttons and are not wired up.

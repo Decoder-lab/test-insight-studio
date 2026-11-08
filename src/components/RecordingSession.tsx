@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import TargetFrame from "@/components/TargetFrame";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Video, MonitorPlay, Mic, Circle, Square, AlertCircle, Loader2, CheckCircle2, RotateCcw } from "lucide-react";
@@ -14,7 +16,8 @@ import type { RecordingLimits } from "@/lib/respondent-api/types";
 type Stage = "idle" | "uploading" | "failed" | "done";
 
 interface RecordingSessionProps {
-  targetURL?: string;
+  /** The page the respondent browses while recording: the project's `targetUrl`. */
+  targetURL: string;
   limits: RecordingLimits;
   /** Which recordings to make. The default is `ENABLED_RECORDING_KINDS`; the screen is off there. */
   kinds?: readonly RecordingKind[];
@@ -38,8 +41,75 @@ const formatTime = (s: number) => {
   return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
 };
 
+interface RecordingViewProps {
+  targetURL: string;
+  remaining: number;
+  progressPercent: number;
+  previewRef: (element: HTMLVideoElement | null) => void;
+  onStop: () => void;
+}
+
+/**
+ * The recording itself: a slim header with every control above a target page that fills the rest of the
+ * viewport. It is portalled to `document.body` so that it escapes the stepper, the page padding and the
+ * transform of the step transition, which would otherwise make `fixed` position against that ancestor.
+ */
+const RecordingView = ({ targetURL, remaining, progressPercent, previewRef, onStop }: RecordingViewProps) => {
+  // The view covers the screen; keep the page behind it from scrolling (the iframe chains its scroll).
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
+  return createPortal(
+    <motion.div
+      className="fixed inset-0 z-50 flex flex-col bg-background"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <header className="relative flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
+            <span className="text-sm font-mono font-medium text-destructive">REC</span>
+          </div>
+          <span className="truncate text-sm font-mono text-muted-foreground">{formatTime(remaining)} remaining</span>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          {/* Webcam self-view */}
+          <div className="h-10 aspect-video overflow-hidden rounded-md border-2 border-accent bg-surface-dark">
+            <video
+              ref={previewRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+              style={{ transform: "scaleX(-1)" }}
+            />
+          </div>
+          <Button onClick={onStop} variant="destructive" className="rounded-full px-6 gap-2">
+            <Square className="w-4 h-4" /> Stop & Submit
+          </Button>
+        </div>
+
+        <Progress value={progressPercent} className="absolute inset-x-0 bottom-0 h-1 rounded-none" />
+      </header>
+
+      <div className="relative min-h-0 flex-1 bg-surface-dark">
+        <TargetFrame url={targetURL} className="absolute inset-0" />
+      </div>
+    </motion.div>,
+    document.body,
+  );
+};
+
 const RecordingSession = ({
-  targetURL = "https://example.com",
+  targetURL,
   limits,
   kinds = ENABLED_RECORDING_KINDS,
   onRecorded,
@@ -171,49 +241,14 @@ const RecordingSession = ({
 
         {/* ─── RECORDING PHASE ─── */}
         {phase === "recording" && (
-          <motion.div
+          <RecordingView
             key="recording"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -12 }}
-          >
-            {/* Timer + progress */}
-            <div className="flex items-center justify-between mb-4 max-w-2xl mx-auto">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-destructive animate-pulse" />
-                <span className="text-sm font-mono font-medium text-destructive">REC</span>
-              </div>
-              <span className="text-sm font-mono text-muted-foreground">{formatTime(remaining)} remaining</span>
-            </div>
-            <Progress value={progressPercent} className="h-1.5 mb-6 max-w-2xl mx-auto" />
-
-            {/* Recording area */}
-            <div className="relative w-full max-w-2xl mx-auto aspect-video rounded-2xl overflow-hidden border border-border bg-surface-dark mb-8">
-              {/* Target page iframe */}
-              <iframe
-                src={targetURL}
-                title="Target page"
-                className="w-full h-full border-0"
-                sandbox="allow-scripts allow-same-origin allow-popups"
-              />
-
-              {/* Webcam PiP */}
-              <div className="absolute bottom-3 right-3 w-32 aspect-video rounded-lg overflow-hidden border-2 border-accent shadow-lg bg-surface-dark">
-                <video
-                  ref={recorder.previewRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="w-full h-full object-cover mirror"
-                  style={{ transform: "scaleX(-1)" }}
-                />
-              </div>
-            </div>
-
-            <Button onClick={recorder.stop} variant="destructive" className="rounded-full px-8 gap-2" size="lg">
-              <Square className="w-4 h-4" /> Stop & Submit
-            </Button>
-          </motion.div>
+            targetURL={targetURL}
+            remaining={remaining}
+            progressPercent={progressPercent}
+            previewRef={recorder.previewRef}
+            onStop={recorder.stop}
+          />
         )}
 
         {/* ─── UPLOADING PHASE ─── */}

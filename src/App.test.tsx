@@ -18,6 +18,7 @@ describe("App routes", () => {
     api.validateInvitation.mockResolvedValue({
       id: "p1",
       name: "Pilot test",
+      targetUrl: "https://example.com/pricing",
       status: "READY",
       limits: { maxDurationSeconds: 120, maxSizeBytes: 52428800, allowedContentTypes: ["video/webm"] },
       progress: { questionnaireSubmitted: false, recordings: { camera: "NOT_STARTED", screen: "NOT_STARTED" } },

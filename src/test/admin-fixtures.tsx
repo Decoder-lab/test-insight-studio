@@ -30,6 +30,7 @@ export const invitation = (over: Partial<InvitationSummary> = {}): InvitationSum
 export const project = (over: Partial<Project> = {}): Project => ({
   id: "p1",
   name: "Pilot test",
+  targetUrl: "https://example.com/pricing",
   status: "CREATED",
   fields: {},
   createdAt: "2026-11-01T09:00:00.000Z",

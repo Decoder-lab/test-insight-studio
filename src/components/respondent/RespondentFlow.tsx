@@ -110,7 +110,7 @@ const RespondentFlow = ({ token, project }: { token: string; project: Respondent
           )}
           {step === "recording" && (
             <RecordingSession
-              targetURL="https://example.com"
+              targetURL={project.targetUrl}
               limits={project.limits}
               onRecorded={upload}
               onComplete={() => setStep("post-survey")}

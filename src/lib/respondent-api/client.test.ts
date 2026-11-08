@@ -12,6 +12,7 @@ const TOKEN = "SECRET-TOKEN";
 const project = () => ({
   id: "p1",
   name: "Pilot test",
+  targetUrl: "https://example.com/pricing",
   status: "READY",
   limits: { maxDurationSeconds: 120, maxSizeBytes: 52428800, allowedContentTypes: ["video/webm"] },
   progress: { questionnaireSubmitted: false, recordings: { camera: "NOT_STARTED", screen: "NOT_STARTED" } },
@@ -59,6 +60,20 @@ describe("validateInvitation", () => {
 
   it("treats an empty success body as unexpected", async () => {
     respond(200, null);
+
+    expect((await failure()).kind).toBe("unexpected");
+  });
+
+  // Without a usable address the recording step would show an empty or dangerous frame.
+  it.each([
+    ["is missing (an older backend)", undefined],
+    ["is not a string", 42],
+    ["is empty", ""],
+    ["is not https", "http://example.com"],
+    ["has a script scheme", "javascript:alert(1)"],
+    ["has user info", "https://user:pw@example.com/"],
+  ])("treats a project whose targetUrl %s as unexpected", async (_label, targetUrl) => {
+    respond(200, { ...project(), targetUrl });
 
     expect((await failure()).kind).toBe("unexpected");
   });

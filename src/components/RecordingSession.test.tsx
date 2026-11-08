@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RecordedVideos } from "@/lib/recording/types";
 import type { RecordingLimits } from "@/lib/respondent-api/types";
+import { TARGET_FRAME_SANDBOX } from "./TargetFrame";
 import RecordingSession from "./RecordingSession";
 
 // Animations would need real time to finish; the phases are what matters here.
@@ -19,6 +20,8 @@ vi.mock("framer-motion", async () => {
   );
   return { motion, AnimatePresence: ({ children }: { children: ReactNode }) => children };
 });
+
+const TARGET_URL = "https://example.com/pricing";
 
 const LIMITS: RecordingLimits = {
   maxDurationSeconds: 120,
@@ -107,7 +110,9 @@ const setup = (props: Partial<React.ComponentProps<typeof RecordingSession>> = {
     ? vi.mocked(props.onRecorded)
     : vi.fn(async (_videos: RecordedVideos) => true);
   const onComplete = vi.fn();
-  const view = render(<RecordingSession limits={LIMITS} onComplete={onComplete} {...props} onRecorded={onRecorded} />);
+  const view = render(
+    <RecordingSession targetURL={TARGET_URL} limits={LIMITS} onComplete={onComplete} {...props} onRecorded={onRecorded} />,
+  );
   return { onRecorded, onComplete, ...view };
 };
 
@@ -144,11 +149,31 @@ describe("by default (camera only)", () => {
   });
 
   it("shows the camera in the preview", async () => {
+    setup();
+
+    await startRecording();
+
+    expect(document.querySelector("video")?.srcObject).toBe(cameraStream);
+  });
+
+  it("covers the whole screen while recording and gives the page back afterwards", async () => {
+    document.body.style.overflow = "auto";
     const { container } = setup();
 
     await startRecording();
 
-    expect(container.querySelector("video")?.srcObject).toBe(cameraStream);
+    const page = screen.getByTitle("Target page");
+    expect(page).toHaveAttribute("src", TARGET_URL); // the project's page, the same frame the admin checked
+    expect(page).toHaveAttribute("sandbox", TARGET_FRAME_SANDBOX);
+    expect(container).not.toContainElement(page); // not squeezed into the surrounding layout
+    expect(screen.getByRole("button", { name: /Stop & Submit/ })).toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("hidden");
+
+    await stopRecording();
+
+    expect(screen.queryByTitle("Target page")).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("auto");
+    document.body.style.overflow = "";
   });
 
   it("hands over the recording with a bare content type and the measured duration, then moves on", async () => {
