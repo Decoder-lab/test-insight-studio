@@ -49,13 +49,13 @@ describe("requests", () => {
     respond(200, { id: "i1" });
 
     await adminApi.listProjectFields();
-    await adminApi.createProject({ name: "N", fields: { a: 1 } });
+    await adminApi.createProject({ name: "N", targetUrl: "https://example.com", fields: { a: 1 } });
     await adminApi.createInvitation("p1", { expiresInHours: 24 });
     await adminApi.revokeInvitation("p1", "i1");
 
     expect(lib.invokeFunction.mock.calls.map(([request]) => request)).toEqual([
       { method: "GET", path: "admin-api/project-fields" },
-      { method: "POST", path: "admin-api/projects", body: { name: "N", fields: { a: 1 } } },
+      { method: "POST", path: "admin-api/projects", body: { name: "N", targetUrl: "https://example.com", fields: { a: 1 } } },
       { method: "POST", path: "admin-api/projects/p1/invitations", body: { expiresInHours: 24 } },
       { method: "POST", path: "admin-api/projects/p1/invitations/i1/revoke" },
     ]);

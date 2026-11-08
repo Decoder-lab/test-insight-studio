@@ -28,7 +28,13 @@ const ALL_TYPES: ProjectFieldDefinition[] = [
 ];
 
 const validate = (definitions: ProjectFieldDefinition[], fields: FieldFormValues, over: object = {}) =>
-  buildFormSchema(definitions).safeParse({ name: "Test", expiresInHours: 168, fields, ...over });
+  buildFormSchema(definitions).safeParse({
+    name: "Test",
+    targetUrl: "https://example.com",
+    expiresInHours: 168,
+    fields,
+    ...over,
+  });
 
 describe("sortDefinitions", () => {
   it("orders by position and breaks ties by key without mutating the input", () => {
@@ -59,6 +65,18 @@ describe("buildFormSchema", () => {
     expect(validate([], {}, { name: "   " }).success).toBe(false);
     expect(validate([], {}, { name: "x".repeat(201) }).success).toBe(false);
     expect(validate([], {}, { name: "x".repeat(200) }).success).toBe(true);
+  });
+
+  it("requires a target URL that follows the contract's rule, and trims it", () => {
+    expect(validate([], {}, { targetUrl: "" }).success).toBe(false);
+    expect(validate([], {}, { targetUrl: "   " }).success).toBe(false);
+    expect(validate([], {}, { targetUrl: "http://example.com" }).success).toBe(false);
+    expect(validate([], {}, { targetUrl: "HTTPS://example.com" }).success).toBe(false);
+    expect(validate([], {}, { targetUrl: "https://@example.com" }).success).toBe(false);
+
+    const padded = validate([], {}, { targetUrl: "  https://example.com/a  " });
+    expect(padded.success).toBe(true);
+    expect(padded.success && padded.data.targetUrl).toBe("https://example.com/a");
   });
 
   it.each([

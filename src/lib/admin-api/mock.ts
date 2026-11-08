@@ -9,6 +9,7 @@
 // Switch it off by unsetting the variable and restarting `npm run dev`. Data resets on reload.
 // Sign-in still uses the real Supabase project; only the admin-api calls are replaced.
 import type { FunctionRequest, FunctionResponse } from "@/lib/supabase";
+import { checkTargetUrl } from "@/lib/target-url";
 import type {
   ErrorCode,
   InvitationSummary,
@@ -59,6 +60,7 @@ interface StoredInvitation {
 interface StoredProject {
   id: string;
   name: string;
+  targetUrl: string;
   fields: ProjectFieldValues;
   createdAt: number;
   readyAt: number | null;
@@ -104,6 +106,7 @@ function toProject(project: StoredProject): Project {
   return {
     id: project.id,
     name: project.name,
+    targetUrl: project.targetUrl,
     status: statusOf(project),
     fields: project.fields,
     createdAt: iso(project.createdAt)!,
@@ -191,6 +194,7 @@ function seed(): StoredProject[] {
     const base: StoredProject = {
       id: uuid(),
       name: `Pilot test ${30 - i}`,
+      targetUrl: "https://example.com",
       fields: { client_name: `Client ${30 - i}`, market: markets[i % markets.length], participants: 5 + i },
       createdAt: now - age,
       readyAt: null,
@@ -287,17 +291,21 @@ function validateFields(definitions: ProjectFieldDefinition[], values: unknown):
 
 function createProject(body: unknown, definitions: ProjectFieldDefinition[]): FunctionResponse {
   const input = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
-  const extra = Object.keys(input).find((key) => key !== "name" && key !== "fields");
+  const extra = Object.keys(input).find((key) => key !== "name" && key !== "targetUrl" && key !== "fields");
   if (extra) return invalid(`${extra}: unknown property`);
   if (typeof input.name !== "string" || input.name.length < 1 || input.name.length > 200) {
     return invalid("name: must be 1-200 characters");
   }
+  // The backend trims first, then applies the rule; the message starts with the property name.
+  const targetProblem = typeof input.targetUrl === "string" ? checkTargetUrl(input.targetUrl.trim()) : "must be a string";
+  if (targetProblem) return invalid(`targetUrl: ${targetProblem}`);
   const problem = validateFields(definitions, input.fields);
   if (problem) return invalid(problem);
 
   const project: StoredProject = {
     id: uuid(),
     name: input.name,
+    targetUrl: (input.targetUrl as string).trim(),
     fields: (input.fields as ProjectFieldValues | undefined) ?? {},
     createdAt: Date.now(),
     readyAt: null,

@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { ArrowLeft, Info, Loader2 } from "lucide-react";
+import { ArrowLeft, Info, Loader2, ScanSearch } from "lucide-react";
 import ApiErrorState from "@/components/admin/ApiErrorState";
 import InvitationLinkDialog from "@/components/admin/InvitationLinkDialog";
 import IssueLinkDialog from "@/components/admin/IssueLinkDialog";
 import QuestionnaireCard from "@/components/admin/QuestionnaireCard";
 import RecordingsCard from "@/components/admin/RecordingsCard";
 import { InvitationStatusBadge, ProjectStatusBadge, RecordingProgressBadge } from "@/components/admin/StatusBadges";
+import TargetUrlCheckDialog from "@/components/admin/TargetUrlCheckDialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -109,6 +110,7 @@ const ProjectDetailsPage = () => {
   const revoke = useRevokeInvitation(projectId);
   const [issueOpen, setIssueOpen] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<InvitationSummary | null>(null);
+  const [checkedUrl, setCheckedUrl] = useState<string | null>(null);
 
   if (project.isPending) {
     return (
@@ -179,17 +181,30 @@ const ProjectDetailsPage = () => {
             {data.readyAt && <span className="text-sm text-muted-foreground">Ready {formatDateTime(data.readyAt)}</span>}
           </div>
         </CardHeader>
-        {entries.length > 0 && (
-          <CardContent>
-            <DetailList>
-              {entries.map((entry) => (
-                <Detail key={entry.key} label={entry.label}>
-                  {formatFieldValue(entry.value)}
-                </Detail>
-              ))}
-            </DetailList>
-          </CardContent>
-        )}
+        <CardContent>
+          <DetailList>
+            <Detail label="Target URL">
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="min-w-0 break-all font-mono text-xs">{data.targetUrl}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCheckedUrl(data.targetUrl)}
+                  className="gap-2"
+                >
+                  <ScanSearch className="h-4 w-4" />
+                  Check
+                </Button>
+              </span>
+            </Detail>
+            {entries.map((entry) => (
+              <Detail key={entry.key} label={entry.label}>
+                {formatFieldValue(entry.value)}
+              </Detail>
+            ))}
+          </DetailList>
+        </CardContent>
       </Card>
 
       <Card>
@@ -269,6 +284,7 @@ const ProjectDetailsPage = () => {
         onSubmit={(hours) => void submitIssue(hours)}
       />
       <InvitationLinkDialog link={issue.link} onClose={issue.dismiss} />
+      <TargetUrlCheckDialog url={checkedUrl} onClose={() => setCheckedUrl(null)} />
 
       <AlertDialog open={revokeTarget !== null} onOpenChange={(open) => !open && setRevokeTarget(null)}>
         <AlertDialogContent>

@@ -1,4 +1,5 @@
 import { invokeFunction, uploadToSignedUrl, type FunctionRequest, type FunctionResponse } from "@/lib/supabase";
+import { isTargetUrl } from "@/lib/target-url";
 import { RespondentApiError } from "./errors";
 import type {
   CompletedProject,
@@ -61,6 +62,8 @@ function isRespondentProject(body: unknown): body is RespondentProject {
   if (!isObject(body) || typeof body.id !== "string" || typeof body.name !== "string" || typeof body.status !== "string") {
     return false;
   }
+  // Without it (an older backend) the recording step would show an empty frame, so it is an unexpected response.
+  if (!isTargetUrl(body.targetUrl)) return false;
   const { limits, progress } = body;
   if (
     !isObject(limits) ||

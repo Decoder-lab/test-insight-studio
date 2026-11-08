@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminApiError } from "@/lib/admin-api/errors";
 import type { ProjectFieldDefinition } from "@/lib/admin-api/types";
 import { field, invitation, project, renderAdminRoute } from "@/test/admin-fixtures";
+import { TARGET_FRAME_SANDBOX } from "@/components/TargetFrame";
 import CreateProjectPage from "./CreateProjectPage";
 
 const api = vi.hoisted(() => ({
@@ -23,10 +24,12 @@ const ALL_TYPES: ProjectFieldDefinition[] = [
 ];
 
 const TOKEN = "SECRET-TOKEN-123";
+const TARGET_URL = "https://example.com/pricing";
 
 const renderPage = () => renderAdminRoute(<CreateProjectPage />, "/admin/projects/new");
 const labels = () => Array.from(document.querySelectorAll("label")).map((label) => label.textContent?.replace("(optional)", ""));
 const type = (label: string | RegExp, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+const check = () => fireEvent.click(screen.getByRole("button", { name: "Check" }));
 const submit = () => fireEvent.click(screen.getByRole("button", { name: "Create test" }));
 
 beforeEach(() => {
@@ -45,7 +48,7 @@ describe("form from field definitions", () => {
 
     await screen.findByLabelText("Name");
 
-    expect(labels()).toEqual(["Name", "Title", "Notes", "Seats", "Signed", "Date", "Market"]);
+    expect(labels()).toEqual(["Name", "Target URL", "Title", "Notes", "Seats", "Signed", "Date", "Market"]);
     expect(screen.getByLabelText("Title")).toHaveAttribute("type", "text");
     expect(screen.getByLabelText(/^Notes/).tagName).toBe("TEXTAREA");
     expect(screen.getByLabelText(/^Seats/)).toHaveAttribute("type", "number");
@@ -54,13 +57,13 @@ describe("form from field definitions", () => {
     expect(screen.getByRole("combobox", { name: /^Market/ })).toBeInTheDocument();
   });
 
-  it("is just the name and the link expiry when no fields are defined", async () => {
+  it("is just the name, the target URL and the link expiry when no fields are defined", async () => {
     api.listProjectFields.mockResolvedValue({ items: [] });
     renderPage();
 
     await screen.findByLabelText("Name");
 
-    expect(labels()).toEqual(["Name"]);
+    expect(labels()).toEqual(["Name", "Target URL"]);
     expect(screen.getByRole("radio", { name: "7 days" })).toBeChecked();
   });
 
@@ -70,6 +73,8 @@ describe("form from field definitions", () => {
     await screen.findByLabelText("Name");
 
     type("Name", "My test");
+
+    type("Target URL", TARGET_URL);
     type("Title", "Hello");
     type(/^Seats/, "12");
     type(/^Date/, "2026-03-09");
@@ -79,6 +84,7 @@ describe("form from field definitions", () => {
     await waitFor(() =>
       expect(api.createProject).toHaveBeenCalledWith({
         name: "My test",
+        targetUrl: TARGET_URL,
         fields: { title: "Hello", seats: 12, signed: true, when: "2026-03-09" },
       }),
     );
@@ -101,6 +107,7 @@ describe("validation", () => {
     submit();
 
     expect(await screen.findByText("Enter a name")).toBeInTheDocument();
+    expect(await screen.findByText("Enter the page's address")).toBeInTheDocument();
     expect(await screen.findByText("Required")).toBeInTheDocument();
     expect(api.createProject).not.toHaveBeenCalled();
   });
@@ -109,6 +116,7 @@ describe("validation", () => {
     renderPage();
     await screen.findByLabelText("Name");
     type("Name", "N");
+    type("Target URL", TARGET_URL);
     type("Title", "T");
 
     fireEvent.click(screen.getByRole("radio", { name: "24 hours" }));
@@ -120,6 +128,7 @@ describe("validation", () => {
     renderPage();
     await screen.findByLabelText("Name");
     type("Name", "N");
+    type("Target URL", TARGET_URL);
     type("Title", "T");
 
     fireEvent.click(screen.getByRole("radio", { name: "Custom" }));
@@ -134,19 +143,94 @@ describe("validation", () => {
   });
 });
 
+describe("target URL", () => {
+  const fillRest = () => {
+    type("Name", "My test");
+    type("Title", "Hello");
+  };
+
+  it.each([
+    ["http://example.com", "Start the address with https://"],
+    ["example.com", "Start the address with https://"],
+    ["HTTPS://example.com", "Start the address with https://"],
+    ["https://user:pw@example.com", "The address must not contain a user name or password"],
+  ])("does not create anything for %s", async (value, message) => {
+    renderPage();
+    await screen.findByLabelText("Name");
+    fillRest();
+    type("Target URL", value);
+
+    submit();
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(api.createProject).not.toHaveBeenCalled();
+  });
+
+  it("sends the address trimmed", async () => {
+    renderPage();
+    await screen.findByLabelText("Name");
+    fillRest();
+    type("Target URL", `  ${TARGET_URL}  `);
+
+    submit();
+
+    await waitFor(() =>
+      expect(api.createProject).toHaveBeenCalledWith({ name: "My test", targetUrl: TARGET_URL, fields: { title: "Hello" } }),
+    );
+  });
+
+  it("shows the address in a large dialog, in the same sandboxed frame the respondent gets, and sends nothing", async () => {
+    renderPage();
+    await screen.findByLabelText("Name");
+    type("Target URL", `  ${TARGET_URL}  `);
+
+    check();
+
+    const dialog = await screen.findByRole("dialog");
+    const frame = within(dialog).getByTitle("Target page preview");
+    expect(frame).toHaveAttribute("src", TARGET_URL);
+    expect(frame).toHaveAttribute("sandbox", TARGET_FRAME_SANDBOX);
+    expect(dialog.className).toContain("h-[90vh]");
+    expect(api.createProject).not.toHaveBeenCalled();
+    expect(api.createInvitation).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.queryByTitle("Target page preview")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Target URL")).toHaveValue(TARGET_URL); // what was typed is still there
+  });
+
+  it.each([
+    ["", "Enter the page's address"],
+    ["http://example.com", "Start the address with https://"],
+  ])("explains what is wrong instead of opening the dialog for %j", async (value, message) => {
+    renderPage();
+    await screen.findByLabelText("Name");
+    type("Target URL", value);
+
+    check();
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Target page preview")).not.toBeInTheDocument();
+  });
+});
+
 describe("two-call submit", () => {
   it("keeps the project and goes to its details page when the link cannot be created", async () => {
     api.createInvitation.mockRejectedValue(new AdminApiError("network", 0));
     renderPage();
     await screen.findByLabelText("Name");
     type("Name", "My test");
+    type("Target URL", TARGET_URL);
     type("Title", "Hello");
 
     submit();
 
     expect(await screen.findByText("details of p1 (link failed)")).toBeInTheDocument();
     expect(api.createProject).toHaveBeenCalledTimes(1);
-    expect(api.createProject).toHaveBeenCalledWith({ name: "My test", fields: { title: "Hello" } });
+    expect(api.createProject).toHaveBeenCalledWith({ name: "My test", targetUrl: TARGET_URL, fields: { title: "Hello" } });
     expect(api.createInvitation).toHaveBeenCalledWith("p1", { expiresInHours: 168 });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -155,6 +239,7 @@ describe("two-call submit", () => {
     renderPage();
     await screen.findByLabelText("Name");
     type("Name", "My test");
+    type("Target URL", TARGET_URL);
     type("Title", "Hello");
 
     submit();
@@ -178,6 +263,7 @@ describe("two-call submit", () => {
     renderPage();
     await screen.findByLabelText("Name");
     type("Name", "My test");
+    type("Target URL", TARGET_URL);
     type("Title", "Hello");
 
     submit();
@@ -193,6 +279,7 @@ describe("two-call submit", () => {
     renderPage();
     await screen.findByLabelText("Name");
     type("Name", "My test");
+    type("Target URL", TARGET_URL);
     type("Title", "Hello");
 
     submit();

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkTargetUrl } from "@/lib/target-url";
 import type { ProjectFieldDefinition, ProjectFieldType, ProjectFieldValue, ProjectFieldValues } from "./types";
 
 /**
@@ -23,9 +24,10 @@ export const isValidExpiry = (hours: number) =>
 export type FieldFormValue = string | boolean;
 export type FieldFormValues = Record<string, FieldFormValue>;
 
-/** The create-test form: the name, the dynamic extra fields (keyed by definition key) and the link expiry. */
+/** The create-test form: the name, the target page, the dynamic extra fields (keyed by definition key) and the link expiry. */
 export interface CreateFormValues {
   name: string;
+  targetUrl: string;
   fields: FieldFormValues;
   expiresInHours: number;
 }
@@ -84,6 +86,13 @@ function fieldSchema(def: ProjectFieldDefinition): z.ZodTypeAny {
 export function buildFormSchema(definitions: ProjectFieldDefinition[]) {
   return z.object({
     name: z.string().trim().min(1, "Enter a name").max(200, "Use at most 200 characters"),
+    targetUrl: z
+      .string()
+      .trim()
+      .superRefine((value, ctx) => {
+        const problem = checkTargetUrl(value);
+        if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+      }),
     fields: z.object(Object.fromEntries(definitions.map((def) => [def.key, fieldSchema(def)]))),
     expiresInHours: z
       .number({ invalid_type_error: "Enter a whole number of hours" })

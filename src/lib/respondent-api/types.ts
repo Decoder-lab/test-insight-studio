@@ -1,4 +1,4 @@
-// Hand-written from contracts/openapi.yaml (Test Insight Studio Backend API, 0.4.0-draft).
+// Hand-written from contracts/openapi.yaml (Test Insight Studio Backend API, 0.7.0-draft).
 // Keep in sync with the contract; do not add fields that are not in it.
 
 import type { ErrorCode, ProjectStatus, RecordingProgress } from "@/lib/admin-api/types";
@@ -86,6 +86,8 @@ export interface CompletedProject {
 export interface RespondentProject {
   id: string;
   name: string;
+  /** The page to browse in an iframe while recording. Visible to every invitation holder: no secrets in it. */
+  targetUrl: string;
   status: ProjectStatus;
   limits: RecordingLimits;
   progress: {

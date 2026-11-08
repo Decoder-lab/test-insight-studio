@@ -42,6 +42,7 @@ interface StepProps {
   submitLabel?: string;
 }
 interface RecordingStepProps {
+  targetURL: string;
   limits: { maxDurationSeconds: number };
   onRecorded: (videos: unknown) => Promise<boolean>;
   onComplete: () => void;
@@ -58,9 +59,10 @@ vi.mock("@/components/PreSurvey", () => ({
   ),
 }));
 vi.mock("@/components/RecordingSession", () => ({
-  default: ({ limits, onRecorded, onComplete, error }: RecordingStepProps) => (
+  default: ({ targetURL, limits, onRecorded, onComplete, error }: RecordingStepProps) => (
     <section>
       <h2>Recording step</h2>
+      <output data-testid="target-url">{targetURL}</output>
       <output data-testid="max-duration">{limits.maxDurationSeconds}</output>
       {error}
       <button onClick={() => void onRecorded(recorded.videos).then((stored) => stored && onComplete())}>
@@ -84,6 +86,7 @@ const TOKEN = "SECRET-TOKEN";
 const project = (over: Partial<RespondentProject> = {}): RespondentProject => ({
   id: "p1",
   name: "Pilot test",
+  targetUrl: "https://example.com/pricing",
   status: "READY",
   limits: { maxDurationSeconds: 120, maxSizeBytes: 52428800, allowedContentTypes: ["video/webm", "video/mp4"] },
   progress: { questionnaireSubmitted: false, recordings: { camera: "NOT_STARTED", screen: "VERIFIED" } },
@@ -236,6 +239,16 @@ describe("the test", () => {
     await recording();
     expect(api.submitQuestionnaire).toHaveBeenCalledTimes(1);
     expect(api.submitQuestionnaire).toHaveBeenCalledWith(TOKEN, { preSurvey: answers.pre });
+  });
+
+  it("gives the recording step the project's target page", async () => {
+    api.validateInvitation.mockResolvedValue(project({ targetUrl: "https://shop.example.org/start" }));
+    renderPage();
+    await preSurvey();
+    click("submit pre-survey");
+    await recording();
+
+    expect(screen.getByTestId("target-url")).toHaveTextContent("https://shop.example.org/start");
   });
 
   it("gives the recording step the project's limits", async () => {

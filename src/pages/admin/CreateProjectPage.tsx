@@ -2,14 +2,15 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, ScanSearch } from "lucide-react";
 import ApiErrorState from "@/components/admin/ApiErrorState";
 import ExpiryPicker from "@/components/admin/ExpiryPicker";
 import InvitationLinkDialog from "@/components/admin/InvitationLinkDialog";
 import ProjectFieldInputs from "@/components/admin/ProjectFieldInputs";
+import TargetUrlCheckDialog from "@/components/admin/TargetUrlCheckDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { describeError, hasCode } from "@/lib/admin-api/errors";
@@ -30,11 +31,18 @@ const CreateProjectForm = ({ definitions }: { definitions: ProjectFieldDefinitio
   const invitation = useIssueInvitation();
   const [submitError, setSubmitError] = useState<unknown>(null);
   const [createdId, setCreatedId] = useState<string | null>(null);
+  /** The address shown in the check dialog; `null` while it is closed. */
+  const [checkedUrl, setCheckedUrl] = useState<string | null>(null);
 
   const schema = useMemo(() => buildFormSchema(definitions), [definitions]);
   const form = useForm<CreateFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", fields: defaultFieldValues(definitions), expiresInHours: DEFAULT_EXPIRY_HOURS },
+    defaultValues: {
+      name: "",
+      targetUrl: "",
+      fields: defaultFieldValues(definitions),
+      expiresInHours: DEFAULT_EXPIRY_HOURS,
+    },
   });
   const submitting = form.formState.isSubmitting;
 
@@ -45,6 +53,7 @@ const CreateProjectForm = ({ definitions }: { definitions: ProjectFieldDefinitio
     try {
       const project = await createProject.mutateAsync({
         name: values.name,
+        targetUrl: values.targetUrl, // trimmed and checked by the schema
         fields: toRequestFields(definitions, values.fields),
       });
       projectId = project.id;
@@ -61,6 +70,11 @@ const CreateProjectForm = ({ definitions }: { definitions: ProjectFieldDefinitio
       // The project exists, only the link is missing: go where it can be created again.
       navigate(`/admin/projects/${projectId}`, { state: { linkFailed: true } });
     }
+  };
+
+  // An invalid address shows its message under the field instead of opening a dialog with nothing in it.
+  const checkTargetPage = async () => {
+    if (await form.trigger("targetUrl")) setCheckedUrl(form.getValues("targetUrl").trim());
   };
 
   const closeLinkDialog = () => {
@@ -81,6 +95,44 @@ const CreateProjectForm = ({ definitions }: { definitions: ProjectFieldDefinitio
                 <FormControl>
                   <Input autoComplete="off" disabled={submitting} {...field} />
                 </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="targetUrl"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Target URL</FormLabel>
+                <div className="flex gap-2">
+                  <FormControl>
+                    <Input
+                      type="url"
+                      inputMode="url"
+                      placeholder="https://example.com/pricing"
+                      autoComplete="off"
+                      spellCheck={false}
+                      disabled={submitting}
+                      {...field}
+                    />
+                  </FormControl>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void checkTargetPage()}
+                    disabled={submitting}
+                    className="shrink-0 gap-2"
+                  >
+                    <ScanSearch className="h-4 w-4" />
+                    Check
+                  </Button>
+                </div>
+                <FormDescription>
+                  Respondents browse this page while they record. It must allow being shown in an iframe: use Check to
+                  see it. Do not put secrets in the address, every respondent can see it.
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -129,6 +181,7 @@ const CreateProjectForm = ({ definitions }: { definitions: ProjectFieldDefinitio
         </form>
       </Form>
 
+      <TargetUrlCheckDialog url={checkedUrl} onClose={() => setCheckedUrl(null)} />
       <InvitationLinkDialog link={invitation.link} onClose={closeLinkDialog} />
     </>
   );

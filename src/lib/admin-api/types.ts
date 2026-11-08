@@ -1,4 +1,4 @@
-// Hand-written from contracts/openapi.yaml (Test Insight Studio Backend API, 0.6.0-draft).
+// Hand-written from contracts/openapi.yaml (Test Insight Studio Backend API, 0.7.0-draft).
 // Keep in sync with the contract; do not add fields that are not in it.
 
 import type { QuestionnaireAnswers, RecordingContentType, RecordingKind } from "@/lib/respondent-api/types";
@@ -72,6 +72,8 @@ export interface InvitationSummary {
 export interface Project {
   id: string;
   name: string;
+  /** The page the respondent browses in an iframe while recording. An `https://` address (see `@/lib/target-url`). */
+  targetUrl: string;
   /** The description of the project. */
   status: ProjectStatus;
   /** The description of the project. */
@@ -120,6 +122,8 @@ export interface RecordingPlayback {
 export interface CreateProjectRequest {
   /** The name of the project. */
   name: string;
+  /** Required. Trimmed and checked with `checkTargetUrl` before it is sent. */
+  targetUrl: string;
   /** The values for the project's extra fields. */
   fields?: ProjectFieldValues;
 }
